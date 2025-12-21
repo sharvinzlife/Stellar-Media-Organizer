@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/stellar-logo.jpeg" alt="Stellar Media Organizer" width="400">
+
 # ⭐ Stellar Media Organizer
 
 ### *Your Media, Perfectly Organized* ✨
@@ -9,8 +11,6 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
-
-<img src="https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/sparkles.svg" width="60" alt="sparkles">
 
 **Organize movies, TV series & music for Plex/Jellyfin with IMDB/MusicBrainz integration, GPU video conversion, and professional audio enhancement.**
 
