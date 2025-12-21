@@ -1,0 +1,130 @@
+# Pre-commit hooks for Media Organizer Pro
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+default_language_version:
+  python: python3.10
+  node: "18.0.0"
+
+repos:
+  # General hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+
+  # Python - Ruff (fast linter + formatter)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        name: ruff lint
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+        files: ^(webapp/backend/|.*\.py$)
+      - id: ruff-format
+        name: ruff format
+        types_or: [python, pyi]
+        files: ^(webapp/backend/|.*\.py$)
+
+  # Python - Security checks
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.7
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml, -r]
+        additional_dependencies: ["bandit[toml]"]
+        files: ^(webapp/backend/|.*\.py$)
+        exclude: tests/
+
+  # Python - Type checking (optional, can be slow)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy type check
+        files: ^webapp/backend/app/
+        args: [--config-file=webapp/backend/pyproject.toml]
+        additional_dependencies:
+          - pydantic>=2.0
+          - fastapi>=0.100
+          - types-requests
+
+  # JavaScript/React - ESLint
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: bash -c 'cd webapp/frontend && npx eslint --fix --ext .ts,.tsx src/'
+        language: system
+        files: ^webapp/frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+  # JavaScript - Prettier (optional, for consistent formatting)
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: bash -c 'cd webapp/frontend && npx prettier --write'
+        language: system
+        files: ^webapp/frontend/.*\.(ts|tsx|css|json|md)$
+        exclude: node_modules/
+
+  # TypeScript type checking
+  - repo: local
+    hooks:
+      - id: typecheck
+        name: typescript typecheck
+        entry: bash -c 'cd webapp/frontend && npx tsc --noEmit'
+        language: system
+        files: ^webapp/frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+  # Commit message format
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.13.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # Shell scripts
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        files: Dockerfile
+
+  # Secrets detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: (package-lock\.json|\.env\.example)
+
+ci:
+  autofix_commit_msg: "style: auto-fix by pre-commit hooks"
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
+  skip: [eslint, prettier]  # Skip in CI, run separately

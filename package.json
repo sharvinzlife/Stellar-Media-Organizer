@@ -1,0 +1,27 @@
+{
+  "name": "stellar-media-organizer",
+  "version": "2.0.0",
+  "description": "Stellar Media Organizer - Organize movies, series & music for Plex/Jellyfin with IMDB/MusicBrainz integration and GPU conversion",
+  "scripts": {
+    "dev": "concurrently -n GPU,API,WEB -c blue,green,magenta \"pnpm run gpu\" \"pnpm run api\" \"pnpm run web\"",
+    "gpu": "python3 gpu_converter_service.py",
+    "api": "python3 standalone_backend.py",
+    "web": "pnpm --dir webapp/frontend run dev",
+    "start": "pnpm run dev",
+    "stop": "pkill -f gpu_converter_service.py; pkill -f standalone_backend.py; pkill -f vite",
+    "organize": "python3 media_organizer.py organize",
+    "install:frontend": "pnpm --dir webapp/frontend install",
+    "build": "pnpm --dir webapp/frontend run build",
+    "lint": "pnpm run lint:python && pnpm run lint:js",
+    "lint:python": "cd webapp/backend && ruff check .",
+    "lint:js": "cd webapp/frontend && npx eslint .",
+    "lint:fix": "pnpm run lint:fix:python && pnpm run lint:fix:js",
+    "lint:fix:python": "cd webapp/backend && ruff check . --fix && ruff format .",
+    "lint:fix:js": "cd webapp/frontend && npx eslint . --fix && npx prettier --write 'src/**/*.{js,jsx}'",
+    "format": "pnpm run lint:fix",
+    "prepare": "pre-commit install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

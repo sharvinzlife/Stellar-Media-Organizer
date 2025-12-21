@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Testing & Coverage
+.coverage
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# Local virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# Local runtime artifacts
+.run/
+uploads/
+temp/
+output/
+*.log
+*.db
+
+# Environment
+.env
+.env.local
+config.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+dist/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+

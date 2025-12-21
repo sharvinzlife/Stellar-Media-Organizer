@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-server-chrome-devtools@latest"],
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

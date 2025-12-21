@@ -1,0 +1,37 @@
+# Media Organizer Pro - Python Dependencies
+# Install: pip install -r requirements.txt
+
+# Core
+fastapi>=0.104.0
+uvicorn>=0.24.0
+flask>=3.0.0
+flask-cors>=4.0.0
+requests>=2.31.0
+pydantic>=2.5.0
+pydantic-settings>=2.6.0
+python-multipart>=0.0.12
+python-dotenv>=1.0.1
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+
+# Media Processing
+pymkv2>=2.0.0
+
+# Music Organization & Metadata
+musicbrainzngs>=0.7.1
+mutagen>=1.47.0
+
+# CLI & Output
+rich>=13.7.0
+
+# Optional: IMDB lookup (included in project)
+# No external package needed - uses imdb_lookup.py
+
+# Development Dependencies (install with: pip install -e ".[dev]")
+# ruff>=0.8.5        # Fast Python linter and formatter
+# mypy>=1.13.0       # Static type checker
+# pytest>=8.3.4      # Testing framework
+# pytest-asyncio>=0.24.0
+# pytest-cov>=6.0.0  # Code coverage

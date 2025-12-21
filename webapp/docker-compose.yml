@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: media-organizer-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/uploads:/app/uploads
+      - ./backend/temp:/app/temp
+      - ./backend/output:/app/output
+      - ~/Documents:/host-documents
+      - ${MEDIA_PATH:-./media}:/media
+    environment:
+      - PYTHONUNBUFFERED=1
+      - USE_HOST_FFMPEG=false
+      - USE_EXTERNAL_GPU=false
+      - EXTERNAL_GPU_URL=http://localhost:8888
+      - API_PREFIX=/api/v1
+      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://localhost"]
+    restart: unless-stopped
+    networks:
+      - media-network
+
+  frontend:
+    build: ./frontend
+    container_name: media-organizer-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - media-network
+
+volumes:
+  media-uploads:
+  media-output:
+  media-temp:
+
+networks:
+  media-network:
+    driver: bridge
