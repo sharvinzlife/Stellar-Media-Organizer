@@ -52,8 +52,11 @@ const Header: React.FC = () => {
 
             <div className="space-y-0.5">
               <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2">
-                <span className="text-gradient-animated">Stellar</span>
-                <span className="text-white">Media Organizer</span>
+                <span className="glitch-wrapper">
+                  <span className="glitch-text" data-text="Stellar Media Organizer">
+                    Stellar Media Organizer
+                  </span>
+                </span>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-purple-300 font-medium animate-pulse">
                   ⭐ v2.0
                 </span>

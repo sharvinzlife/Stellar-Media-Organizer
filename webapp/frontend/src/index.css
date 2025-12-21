@@ -11,6 +11,181 @@
   --accent-tertiary: #f472b6;
 }
 
+/* ========== EPIC GLITCH TEXT EFFECT ========== */
+.glitch-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.glitch-text {
+  position: relative;
+  font-weight: 800;
+  color: white;
+  text-shadow: 
+    0 0 10px rgba(139, 92, 246, 0.5),
+    0 0 20px rgba(6, 182, 212, 0.3),
+    0 0 30px rgba(244, 114, 182, 0.2);
+  animation: glitch-skew 1s infinite linear alternate-reverse;
+}
+
+.glitch-text::before,
+.glitch-text::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  font-weight: 800;
+}
+
+/* Cyan/Blue layer - shifts left */
+.glitch-text::before {
+  color: #06b6d4;
+  animation: glitch-rgb-1 0.3s infinite linear alternate-reverse;
+  clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+  transform: translate(-2px, 0);
+  opacity: 0.8;
+  mix-blend-mode: screen;
+}
+
+/* Pink/Magenta layer - shifts right */
+.glitch-text::after {
+  color: #f472b6;
+  animation: glitch-rgb-2 0.3s infinite linear alternate-reverse;
+  clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+  transform: translate(2px, 0);
+  opacity: 0.8;
+  mix-blend-mode: screen;
+}
+
+/* RGB shift animation - cyan layer */
+@keyframes glitch-rgb-1 {
+  0% { 
+    transform: translate(0, 0);
+    clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+  }
+  10% { 
+    transform: translate(-3px, 1px);
+    clip-path: polygon(0 15%, 100% 15%, 100% 30%, 0 30%);
+  }
+  20% { 
+    transform: translate(3px, -1px);
+    clip-path: polygon(0 50%, 100% 50%, 100% 65%, 0 65%);
+  }
+  30% { 
+    transform: translate(-2px, 0);
+    clip-path: polygon(0 5%, 100% 5%, 100% 20%, 0 20%);
+  }
+  40% { 
+    transform: translate(0, 2px);
+    clip-path: polygon(0 70%, 100% 70%, 100% 85%, 0 85%);
+  }
+  50% { 
+    transform: translate(-4px, -1px);
+    clip-path: polygon(0 35%, 100% 35%, 100% 50%, 0 50%);
+  }
+  60% { 
+    transform: translate(2px, 1px);
+    clip-path: polygon(0 0, 100% 0, 100% 15%, 0 15%);
+  }
+  70% { 
+    transform: translate(-1px, -2px);
+    clip-path: polygon(0 60%, 100% 60%, 100% 75%, 0 75%);
+  }
+  80% { 
+    transform: translate(3px, 0);
+    clip-path: polygon(0 25%, 100% 25%, 100% 40%, 0 40%);
+  }
+  90% { 
+    transform: translate(-2px, 1px);
+    clip-path: polygon(0 80%, 100% 80%, 100% 95%, 0 95%);
+  }
+  100% { 
+    transform: translate(0, 0);
+    clip-path: polygon(0 45%, 100% 45%, 100% 60%, 0 60%);
+  }
+}
+
+/* RGB shift animation - pink layer */
+@keyframes glitch-rgb-2 {
+  0% { 
+    transform: translate(0, 0);
+    clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+  }
+  10% { 
+    transform: translate(3px, -1px);
+    clip-path: polygon(0 70%, 100% 70%, 100% 85%, 0 85%);
+  }
+  20% { 
+    transform: translate(-3px, 1px);
+    clip-path: polygon(0 20%, 100% 20%, 100% 35%, 0 35%);
+  }
+  30% { 
+    transform: translate(2px, 0);
+    clip-path: polygon(0 85%, 100% 85%, 100% 100%, 0 100%);
+  }
+  40% { 
+    transform: translate(0, -2px);
+    clip-path: polygon(0 10%, 100% 10%, 100% 25%, 0 25%);
+  }
+  50% { 
+    transform: translate(4px, 1px);
+    clip-path: polygon(0 50%, 100% 50%, 100% 65%, 0 65%);
+  }
+  60% { 
+    transform: translate(-2px, -1px);
+    clip-path: polygon(0 90%, 100% 90%, 100% 100%, 0 100%);
+  }
+  70% { 
+    transform: translate(1px, 2px);
+    clip-path: polygon(0 30%, 100% 30%, 100% 45%, 0 45%);
+  }
+  80% { 
+    transform: translate(-3px, 0);
+    clip-path: polygon(0 65%, 100% 65%, 100% 80%, 0 80%);
+  }
+  90% { 
+    transform: translate(2px, -1px);
+    clip-path: polygon(0 5%, 100% 5%, 100% 20%, 0 20%);
+  }
+  100% { 
+    transform: translate(0, 0);
+    clip-path: polygon(0 40%, 100% 40%, 100% 55%, 0 55%);
+  }
+}
+
+/* Main text skew/shake */
+@keyframes glitch-skew {
+  0% { transform: skew(0deg, 0deg); }
+  2% { transform: skew(0deg, 0deg); }
+  3% { transform: skew(-1deg, 0deg); }
+  4% { transform: skew(1deg, 0deg); }
+  5% { transform: skew(0deg, 0deg); }
+  48% { transform: skew(0deg, 0deg); }
+  49% { transform: skew(2deg, 0deg); }
+  50% { transform: skew(-2deg, 0deg); }
+  51% { transform: skew(0.5deg, 0deg); }
+  52% { transform: skew(0deg, 0deg); }
+  97% { transform: skew(0deg, 0deg); }
+  98% { transform: skew(-1deg, 0deg); }
+  99% { transform: skew(1deg, 0deg); }
+  100% { transform: skew(0deg, 0deg); }
+}
+
+/* Hover intensifies the effect */
+.glitch-wrapper:hover .glitch-text {
+  animation: glitch-skew 0.3s infinite linear alternate-reverse;
+}
+
+.glitch-wrapper:hover .glitch-text::before {
+  animation: glitch-rgb-1 0.15s infinite linear alternate-reverse;
+}
+
+.glitch-wrapper:hover .glitch-text::after {
+  animation: glitch-rgb-2 0.15s infinite linear alternate-reverse;
+}
+
 @layer base {
   html {
     @apply font-sans antialiased;
