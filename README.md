@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/stellar-logo.jpeg" alt="Stellar Media Organizer" width="400">
+<img src="assets/stellar-logo.gif" alt="Stellar Media Organizer" width="350">
 
 # ⭐ Stellar Media Organizer
 
