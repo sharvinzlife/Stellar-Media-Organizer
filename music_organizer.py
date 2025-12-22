@@ -362,7 +362,7 @@ class AudioEnhancer:
         settings: Optional[AudioSettings] = None,
         preset: AudioPreset = AudioPreset.OPTIMAL,
         preserve_metadata: bool = True,
-        output_format: str = "flac"
+        output_format: Optional[str] = None
     ) -> bool:
         """
         Enhance audio file with EQ, normalization, and effects
@@ -373,7 +373,7 @@ class AudioEnhancer:
             settings: Custom AudioSettings (overrides preset)
             preset: Audio enhancement preset
             preserve_metadata: Copy metadata to output
-            output_format: Output format (flac, mp3, m4a)
+            output_format: Output format (flac, mp3, m4a, opus, or None to auto-detect)
         
         Returns:
             True if successful
@@ -383,34 +383,72 @@ class AudioEnhancer:
         
         filter_chain = self._build_filter_chain(settings)
         
+        # Auto-detect output format from extension if not specified
+        if output_format is None:
+            output_format = Path(output_path).suffix.lstrip('.').lower()
+        
         # Build FFmpeg command
         cmd = ['ffmpeg', '-y', '-i', input_path]
         
         # Audio filter
         cmd.extend(['-af', filter_chain])
         
-        # Output codec settings
+        # Formats that support embedded cover art as video stream
+        formats_with_cover_art = {'flac', 'mp3', 'm4a', 'aac'}
+        supports_cover = output_format in formats_with_cover_art
+        
+        # Output codec settings based on format
         if output_format == 'flac':
             cmd.extend(['-c:a', 'flac', '-compression_level', '8'])
         elif output_format == 'mp3':
             cmd.extend(['-c:a', 'libmp3lame', '-q:a', '0'])  # VBR highest quality
         elif output_format in ('m4a', 'aac'):
             cmd.extend(['-c:a', 'aac', '-b:a', '320k'])
+        elif output_format == 'opus':
+            cmd.extend(['-c:a', 'libopus', '-b:a', '256k'])
+        elif output_format == 'ogg':
+            cmd.extend(['-c:a', 'libvorbis', '-q:a', '10'])
+        elif output_format == 'wav':
+            cmd.extend(['-c:a', 'pcm_s24le'])
         else:
-            cmd.extend(['-c:a', 'copy'])
+            # Default to FLAC for unknown formats (never use copy with filters!)
+            cmd.extend(['-c:a', 'flac', '-compression_level', '8'])
+            supports_cover = True
+            # Update output path to .flac if needed
+            if not output_path.endswith('.flac'):
+                output_path = str(Path(output_path).with_suffix('.flac'))
         
-        # Preserve metadata
+        # Preserve metadata and cover art (only for formats that support it)
         if preserve_metadata:
-            cmd.extend(['-map_metadata', '0'])
+            if supports_cover:
+                # Map audio, optional video (cover art), copy video codec, preserve metadata
+                cmd.extend(['-map', '0:a', '-map', '0:v?', '-c:v', 'copy', '-map_metadata', '0', '-disposition:v', 'attached_pic'])
+            else:
+                # For opus/ogg/wav - only map audio and metadata (no cover art support)
+                cmd.extend(['-map', '0:a', '-map_metadata', '0'])
         
         cmd.append(output_path)
         
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            logger.info(f"Enhanced: {input_path} -> {output_path}")
-            return True
+            # Use errors='replace' to handle non-UTF8 characters in FFmpeg output
+            result = subprocess.run(cmd, capture_output=True, check=True, encoding='utf-8', errors='replace')
+            # Verify output file exists and has content
+            output_file = Path(output_path)
+            if output_file.exists() and output_file.stat().st_size > 0:
+                logger.info(f"Enhanced: {input_path} -> {output_path}")
+                return True
+            else:
+                logger.error(f"FFmpeg produced empty output for: {input_path}")
+                if output_file.exists():
+                    output_file.unlink()
+                return False
         except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg error: {e.stderr}")
+            error_msg = e.stderr[:500] if e.stderr else 'No error message'
+            logger.error(f"FFmpeg error for {input_path}: {error_msg}")
+            # Clean up any partial output
+            output_file = Path(output_path)
+            if output_file.exists():
+                output_file.unlink()
             return False
     
     def batch_enhance(

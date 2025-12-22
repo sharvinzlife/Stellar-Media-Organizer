@@ -336,27 +336,30 @@ class MusicDownloader:
         files = []
         errors = []
         
+        # Log the output directory being used
+        self._log(f"📂 Output directory: {self.output_dir}")
+        
         for url in urls:
             self._log(f"🎵 Downloading from YouTube: {url[:60]}...")
             
             # Check if it's a playlist URL
             is_playlist = 'list=' in url or 'playlist' in url.lower()
+            self._log(f"   Is playlist: {is_playlist}")
             
             if is_playlist:
-                # For playlists: use playlist title as folder, keep all tracks together
-                # Format: PlaylistName/01 - Artist - Title.flac
-                output_template = str(self.output_dir / "%(playlist_title)s/%(playlist_index)02d - %(artist,uploader,channel)s - %(title)s.%(ext)s")
+                # For playlists: ALL tracks go in ONE folder named after the playlist
+                # Format: PlaylistName/001 - Artist - Title.ext
+                output_template = str(self.output_dir / "%(playlist_title)s" / "%(playlist_index)03d - %(artist,channel,uploader|Unknown)s - %(title)s.%(ext)s")
             else:
-                # For single videos: use artist/album structure
-                output_template = str(self.output_dir / "%(artist,uploader,channel)s/%(album,title)s/%(track_number,playlist_index|01)02d - %(title)s.%(ext)s")
+                # For single videos: just Artist - Title
+                output_template = str(self.output_dir / "%(artist,channel,uploader|Unknown)s - %(title)s.%(ext)s")
             
-            # Build command - handle 'original' format (keep best audio without conversion)
-            cmd = [
-                'yt-dlp',
-                '--extract-audio',
-            ]
+            self._log(f"   Output template: {output_template}")
             
-            # Only specify format conversion if not 'original'
+            # Build yt-dlp command
+            cmd = ['yt-dlp', '--extract-audio']
+            
+            # Audio format (skip if 'original' to keep best quality)
             if audio_format != 'original':
                 cmd.extend(['--audio-format', audio_format])
             
@@ -365,12 +368,31 @@ class MusicDownloader:
                 '--embed-thumbnail',
                 '--embed-metadata',
                 '--add-metadata',
-                '--parse-metadata', 'playlist_index:%(track_number)s',
+            ])
+            
+            # Playlist-specific options
+            if is_playlist:
+                cmd.extend([
+                    # Set album = playlist title, album_artist = playlist title
+                    '--parse-metadata', 'playlist_title:%(album)s',
+                    '--parse-metadata', 'playlist_title:%(album_artist)s',
+                    '--parse-metadata', 'playlist_index:%(track_number)s',
+                    # Download playlist cover
+                    '--write-thumbnail',
+                    '--convert-thumbnails', 'jpg',
+                    '--yes-playlist',
+                ])
+            else:
+                cmd.append('--no-playlist')
+            
+            cmd.extend([
                 '--output', output_template,
-                '--yes-playlist' if is_playlist else '--no-playlist',
                 '--progress',
+                '--newline',  # Better progress parsing
                 url
             ])
+            
+            self._log(f"   Command: {' '.join(cmd[:10])}...")
             
             try:
                 process = subprocess.Popen(
@@ -381,35 +403,76 @@ class MusicDownloader:
                     bufsize=1
                 )
                 
+                playlist_dir = None
+                downloaded_files = []
+                
                 for line in iter(process.stdout.readline, ''):
                     line = line.strip()
-                    if line:
-                        # Parse progress
-                        if '[download]' in line and '%' in line:
-                            self._log(f"   {line}")
-                        elif 'Destination:' in line:
-                            self._log(f"   📁 {line}")
-                        elif '[ExtractAudio]' in line:
-                            self._log(f"   🎵 {line}")
+                    if not line:
+                        continue
+                    
+                    # Log progress
+                    if '[download]' in line and '%' in line:
+                        self._log(f"   {line}")
+                    elif 'Destination:' in line:
+                        self._log(f"   📁 {line}")
+                        # Track the file path
+                        import re
+                        match = re.search(r'Destination:\s*(.+)', line)
+                        if match:
+                            file_path = Path(match.group(1).strip())
+                            downloaded_files.append(str(file_path))
+                            if is_playlist and not playlist_dir:
+                                playlist_dir = file_path.parent
+                    elif '[ExtractAudio]' in line:
+                        self._log(f"   🎵 {line}")
+                        # Also track extracted audio files
+                        import re
+                        match = re.search(r'Destination:\s*(.+)', line)
+                        if match:
+                            file_path = Path(match.group(1).strip())
+                            downloaded_files.append(str(file_path))
+                            if is_playlist and not playlist_dir:
+                                playlist_dir = file_path.parent
+                    elif 'error' in line.lower():
+                        self._log(f"   ⚠️ {line}", "warning")
                 
                 process.wait()
                 
                 if process.returncode == 0:
                     self._log(f"✅ YouTube download complete: {url[:40]}...", "success")
-                    # Find downloaded files (yt-dlp doesn't easily report them)
-                    files.append(url)  # Track URL as success indicator
+                    
+                    # Handle playlist cover image
+                    if is_playlist and playlist_dir and playlist_dir.exists():
+                        self._log(f"   📁 Playlist folder: {playlist_dir}")
+                        # Find thumbnail and rename to cover.jpg
+                        for thumb in playlist_dir.glob('*.jpg'):
+                            if thumb.name != 'cover.jpg' and 'thumb' not in thumb.name.lower():
+                                cover_path = playlist_dir / 'cover.jpg'
+                                if not cover_path.exists():
+                                    try:
+                                        thumb.rename(cover_path)
+                                        self._log(f"   🖼️ Saved cover: cover.jpg")
+                                    except Exception as e:
+                                        self._log(f"   ⚠️ Could not rename thumbnail: {e}", "warning")
+                                    break
+                    
+                    files.extend(downloaded_files)
                 else:
-                    errors.append(f"yt-dlp failed for {url}")
+                    error_msg = f"yt-dlp failed for {url} (exit code: {process.returncode})"
+                    errors.append(error_msg)
+                    self._log(f"❌ {error_msg}", "error")
                     
             except Exception as e:
-                errors.append(f"YouTube download error: {str(e)}")
-                self._log(f"❌ Error: {e}", "error")
+                error_msg = f"YouTube download error: {str(e)}"
+                errors.append(error_msg)
+                self._log(f"❌ {error_msg}", "error")
         
         return DownloadResult(
-            success=len(errors) == 0,
+            success=len(files) > 0,
             source=DownloadSource.YOUTUBE_MUSIC,
             files=files,
-            message=f"Downloaded {len(files)} from YouTube",
+            message=f"Downloaded {len(files)} files from YouTube",
             errors=errors
         )
     

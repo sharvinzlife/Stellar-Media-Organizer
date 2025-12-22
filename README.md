@@ -70,6 +70,29 @@ Stellar Media Organizer is an all-in-one solution for managing your media librar
 
 ---
 
+## 📸 Screenshots
+
+<div align="center">
+
+### 🎵 Music Enhancement Panel
+*Professional audio enhancement with multiple presets and format options*
+
+<img src="assets/screenshots/music-enhance-panel.png" alt="Music Enhancement Panel" width="800">
+
+### 📥 Music Download & Activity
+*Download from YouTube Music, Spotify, or AllDebrid with real-time progress*
+
+<img src="assets/screenshots/music-download-activity.png" alt="Music Download Activity" width="800">
+
+### 📊 Job History & Live Logs
+*Track all your processing jobs with detailed activity logs*
+
+<img src="assets/screenshots/job-history-logs.png" alt="Job History and Logs" width="800">
+
+</div>
+
+---
+
 ## 🏗️ Architecture
 
 ```mermaid

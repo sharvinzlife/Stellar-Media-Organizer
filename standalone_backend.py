@@ -431,6 +431,7 @@ def run_alldebrid_download(job_id: int, links: List[str], output_path: str, lang
     
     try:
         from alldebrid_downloader import AllDebridDownloader
+        import re
         
         api_key = ALLDEBRID_API_KEY
         if not api_key:
@@ -438,9 +439,30 @@ def run_alldebrid_download(job_id: int, links: List[str], output_path: str, lang
             db.update_job_status(job_id, JobStatus.FAILED, error_message="API key not configured")
             return
         
-        # Progress callback to update job logs in real-time
+        # Track current file being downloaded
+        current_download_file = ["Initializing..."]
+        
+        # Progress callback to update job logs AND database progress in real-time
         def progress_callback(message: str, level: str = "info"):
             add_job_log(job_id, message, level)
+            
+            # Parse progress percentage from aria2c output (e.g., "📊 67% - [#f0da72 1.4GiB/2.1GiB(67%)")
+            percent_match = re.search(r'(\d+)%', message)
+            if percent_match:
+                percent = int(percent_match.group(1))
+                # Scale download progress to 5-80% range (leave room for organizing)
+                scaled_progress = 5 + (percent * 0.75)  # 5% to 80%
+                db.update_job_progress(job_id, scaled_progress, current_file=current_download_file[0])
+            
+            # Track filename being downloaded
+            if "Downloading:" in message:
+                filename = message.split("Downloading:")[-1].strip()[:60]
+                current_download_file[0] = f"⬇️ {filename}"
+                db.update_job_progress(job_id, 10.0, current_file=current_download_file[0])
+            elif "Unlocking" in message or "Unlocked" in message:
+                db.update_job_progress(job_id, 5.0, current_file="🔓 Unlocking links...")
+            elif "Downloaded:" in message:
+                db.update_job_progress(job_id, 80.0, current_file="✅ Download complete, organizing...")
         
         add_job_log(job_id, f"🚀 Starting AllDebrid download of {len(links)} links...", "info")
         db.update_job_progress(job_id, 5.0, current_file=f"Unlocking {len(links)} links...")
@@ -1006,13 +1028,17 @@ def process_music_background(job_id: int, request: MusicProcessRequest):
             )
             
             if result:
-                db.update_job(job_id, status=JobStatus.COMPLETED, progress=100, processed_files=1, total_files=1)
+                db.update_job_status(job_id, status=JobStatus.COMPLETED)
+                db.update_job_progress(job_id, progress=100, processed_files=1)
                 add_job_log(job_id, f"✅ Organized: {result}", "success")
             else:
-                db.update_job(job_id, status=JobStatus.FAILED, error_message="Failed to process file")
+                db.update_job_status(job_id, status=JobStatus.FAILED, error_message="Failed to process file")
                 add_job_log(job_id, "❌ Failed to process file", "error")
         else:
             # Directory
+            db.update_job_status(job_id, status=JobStatus.IN_PROGRESS)
+            add_job_log(job_id, f"🔍 Scanning directory for audio files...", "info")
+            
             results = organizer.organize_directory(
                 str(input_path),
                 request.output_path,
@@ -1022,13 +1048,8 @@ def process_music_background(job_id: int, request: MusicProcessRequest):
                 lookup_metadata=request.lookup_metadata
             )
             
-            db.update_job(
-                job_id,
-                status=JobStatus.COMPLETED if results['failed'] == 0 else JobStatus.COMPLETED,
-                progress=100,
-                processed_files=results['success'],
-                total_files=results['total']
-            )
+            db.update_job_status(job_id, status=JobStatus.COMPLETED if results['failed'] == 0 else JobStatus.COMPLETED)
+            db.update_job_progress(job_id, progress=100, processed_files=results['success'])
             
             add_job_log(job_id, f"✅ Processed {results['success']}/{results['total']} files", "success")
             if results['errors']:
@@ -1037,7 +1058,7 @@ def process_music_background(job_id: int, request: MusicProcessRequest):
                     
     except Exception as e:
         logger.error(f"Music processing error: {e}")
-        db.update_job(job_id, status=JobStatus.FAILED, error_message=str(e))
+        db.update_job_status(job_id, status=JobStatus.FAILED, error_message=str(e))
         add_job_log(job_id, f"❌ Error: {str(e)}", "error")
 
 
@@ -1140,6 +1161,174 @@ async def process_music(request: MusicProcessRequest, background_tasks: Backgrou
         message=f"Music processing started (Job #{job.id})",
         job_id=job.id
     )
+
+
+class MusicEnhanceRequest(BaseModel):
+    """Request model for enhancing music files in-place (preserving folder structure)"""
+    source_path: str
+    output_path: str = ""  # If empty, enhance in-place
+    preset: str = "optimal"
+    output_format: str = "keep"
+
+
+def enhance_music_background(job_id: int, request: MusicEnhanceRequest):
+    """Background task for enhancing music files while preserving folder structure"""
+    from music_organizer import AudioEnhancer, AudioPreset
+    
+    db = get_db()
+    
+    try:
+        # Map preset string to enum
+        preset_map = {
+            'optimal': AudioPreset.OPTIMAL,
+            'clarity': AudioPreset.CLARITY,
+            'bass_boost': AudioPreset.BASS_BOOST,
+            'warm': AudioPreset.WARM,
+            'bright': AudioPreset.BRIGHT,
+            'flat': AudioPreset.FLAT,
+        }
+        preset = preset_map.get(request.preset, AudioPreset.OPTIMAL)
+        
+        add_job_log(job_id, f"🎵 Initializing Audio Enhancer...", "info")
+        add_job_log(job_id, f"📁 Source: {request.source_path}", "info")
+        add_job_log(job_id, f"🎛️ Preset: {request.preset}", "info")
+        
+        # Initialize enhancer
+        enhancer = AudioEnhancer()
+        
+        source_path = Path(request.source_path)
+        output_path = Path(request.output_path) if request.output_path else source_path
+        
+        # Determine if we're enhancing in-place or to a different location
+        in_place = str(source_path) == str(output_path)
+        
+        if in_place:
+            add_job_log(job_id, "⚠️ Enhancing in-place (original files will be replaced)", "warning")
+        else:
+            add_job_log(job_id, f"📂 Output: {output_path}", "info")
+            output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Find all audio files
+        audio_extensions = ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav', '.webm']
+        audio_files = []
+        
+        if source_path.is_file():
+            if source_path.suffix.lower() in audio_extensions:
+                audio_files = [source_path]
+        else:
+            audio_files = [f for f in source_path.rglob('*') 
+                          if f.is_file() and f.suffix.lower() in audio_extensions]
+        
+        total = len(audio_files)
+        add_job_log(job_id, f"🔍 Found {total} audio files to enhance", "info")
+        
+        if total == 0:
+            db.update_job_status(job_id, status=JobStatus.COMPLETED)
+            add_job_log(job_id, "⚠️ No audio files found", "warning")
+            return
+        
+        db.update_job_status(job_id, status=JobStatus.IN_PROGRESS)
+        processed = 0
+        errors = []
+        
+        for i, audio_file in enumerate(audio_files):
+            try:
+                # Calculate destination path (preserve folder structure)
+                if in_place:
+                    # Create temp file path (don't create the file yet - ffmpeg will create it)
+                    import tempfile
+                    temp_dir = tempfile.gettempdir()
+                    temp_path = Path(temp_dir) / f"enhance_{audio_file.stem}_{i}{audio_file.suffix}"
+                    dest_path = temp_path
+                else:
+                    rel_path = audio_file.relative_to(source_path) if source_path.is_dir() else audio_file.name
+                    dest_path = output_path / rel_path
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                add_job_log(job_id, f"🎵 Enhancing ({i+1}/{total}): {audio_file.name}", "info")
+                
+                # Enhance the audio
+                success = enhancer.enhance_audio(str(audio_file), str(dest_path), preset=preset)
+                
+                if success and dest_path.exists() and dest_path.stat().st_size > 0:
+                    # If in-place, replace original with enhanced version
+                    if in_place:
+                        import shutil
+                        shutil.move(str(dest_path), str(audio_file))
+                    processed += 1
+                else:
+                    # Enhancement failed
+                    add_job_log(job_id, f"⚠️ Enhancement failed for {audio_file.name}, keeping original", "warning")
+                    # Clean up temp file if it exists
+                    if in_place and dest_path.exists():
+                        dest_path.unlink()
+                    errors.append(f"Enhancement failed: {audio_file.name}")
+                
+                # Update progress
+                progress = ((i + 1) / total) * 100
+                db.update_job_progress(job_id, progress=progress, processed_files=processed)
+                
+            except Exception as e:
+                error_msg = f"Error enhancing {audio_file.name}: {e}"
+                add_job_log(job_id, f"⚠️ {error_msg}", "warning")
+                errors.append(error_msg)
+                # Clean up temp file if it exists
+                if in_place and 'dest_path' in locals() and dest_path.exists():
+                    try:
+                        dest_path.unlink()
+                    except:
+                        pass
+        
+        # Complete
+        db.update_job_status(job_id, status=JobStatus.COMPLETED)
+        db.update_job_progress(job_id, progress=100, processed_files=processed)
+        
+        with db.get_session() as session:
+            job = session.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.total_files = total
+                session.commit()
+        
+        add_job_log(job_id, f"✅ Enhanced {processed}/{total} files (preset: {request.preset})", "success")
+        
+        if errors:
+            add_job_log(job_id, f"⚠️ {len(errors)} files had errors", "warning")
+            
+    except Exception as e:
+        logger.error(f"Music enhancement error: {e}")
+        db.update_job_status(job_id, status=JobStatus.FAILED, error_message=str(e))
+        add_job_log(job_id, f"❌ Error: {str(e)}", "error")
+
+
+@app.post("/api/v1/music/enhance")
+async def enhance_music(request: MusicEnhanceRequest, background_tasks: BackgroundTasks):
+    """Enhance audio files while preserving folder structure (no reorganization)"""
+    
+    # Validate source path
+    source_path = Path(request.source_path)
+    if not source_path.exists():
+        raise HTTPException(status_code=400, detail=f"Source path not found: {request.source_path}")
+    
+    # Create job
+    db = get_db()
+    output = request.output_path or request.source_path
+    job = db.create_job(
+        job_type=JobType.ORGANIZE,
+        input_path=request.source_path,
+        output_path=output,
+        language=request.preset
+    )
+    
+    # Start background processing
+    background_tasks.add_task(enhance_music_background, job.id, request)
+    
+    return {
+        "success": True,
+        "message": f"Audio enhancement started (Job #{job.id})",
+        "job_id": job.id,
+        "preset": request.preset,
+        "in_place": not request.output_path or request.output_path == request.source_path
+    }
 
 
 class MusicAllDebridRequest(BaseModel):
@@ -1321,7 +1510,14 @@ def process_music_download_background(
         logger.info(f"[Job {job_id}] Starting music download of {len(urls)} URLs")
         
         # Check if this is a playlist URL (YouTube or Spotify)
-        is_playlist = any('list=' in url or 'playlist' in url.lower() for url in urls)
+        is_playlist = any(
+            'list=' in url or 
+            'playlist' in url.lower() or
+            'RDCLAK' in url  # YouTube Music radio/playlist
+            for url in urls
+        )
+        
+        add_job_log(job_id, f"🔍 Playlist detection: is_playlist={is_playlist}", "info")
         
         # Create temp directory for downloads
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1394,8 +1590,28 @@ def process_music_download_background(
             # For AllDebrid or single tracks: use full music organizer with MusicBrainz
             detected_source = result.source if result.source != DownloadSource.AUTO else download_source
             
-            if is_playlist and detected_source in [DownloadSource.YOUTUBE_MUSIC, DownloadSource.SPOTIFY]:
+            add_job_log(job_id, f"🔍 Debug: is_playlist={is_playlist}, detected_source={detected_source}", "info")
+            
+            # Check if we should preserve playlist structure
+            # For ANY playlist (YouTube, Spotify, etc.), preserve the folder structure
+            # Only use MusicBrainz reorganization for single tracks or AllDebrid downloads
+            preserve_playlist = is_playlist or detected_source in [DownloadSource.YOUTUBE_MUSIC, DownloadSource.SPOTIFY]
+            
+            # Also check if temp_dir has a playlist-like structure (single subfolder with multiple files)
+            temp_subdirs = [d for d in Path(temp_dir).iterdir() if d.is_dir()]
+            if len(temp_subdirs) == 1:
+                # Single subfolder = likely a playlist
+                subdir_files = list(temp_subdirs[0].rglob('*'))
+                audio_count = sum(1 for f in subdir_files if f.is_file() and f.suffix.lower() in ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav', '.webm'])
+                if audio_count > 1:
+                    preserve_playlist = True
+                    add_job_log(job_id, f"🔍 Detected playlist structure: {temp_subdirs[0].name} with {audio_count} tracks", "info")
+            
+            add_job_log(job_id, f"🔍 Final decision: preserve_playlist={preserve_playlist}", "info")
+            
+            if preserve_playlist:
                 add_job_log(job_id, "📁 Playlist detected - preserving folder structure", "info")
+                add_job_log(job_id, f"🔍 Debug: enhance_audio={enhance_audio}, preset={preset}", "info")
                 
                 # Map preset string to enum
                 preset_map = {
@@ -1415,29 +1631,75 @@ def process_music_download_background(
                 processed = 0
                 total = 0
                 
-                # Initialize audio enhancer if needed
-                enhancer = AudioEnhancer() if enhance_audio else None
+                # Debug: List all files in temp_dir
+                all_files = list(Path(temp_dir).rglob('*'))
+                add_job_log(job_id, f"🔍 Debug: Found {len(all_files)} items in temp_dir", "info")
                 
-                for item in Path(temp_dir).rglob('*'):
-                    if item.is_file() and item.suffix.lower() in ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav']:
-                        total += 1
-                        # Preserve relative path structure
-                        rel_path = item.relative_to(temp_dir)
-                        dest_path = output_base / rel_path
-                        dest_path.parent.mkdir(parents=True, exist_ok=True)
-                        
-                        try:
-                            if enhance_audio and enhancer:
-                                add_job_log(job_id, f"🎵 Enhancing: {item.name}", "info")
-                                enhancer.enhance_audio(str(item), str(dest_path), audio_preset)
+                # Find audio files
+                audio_extensions = ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav', '.webm']
+                audio_files = [f for f in all_files if f.is_file() and f.suffix.lower() in audio_extensions]
+                add_job_log(job_id, f"🔍 Debug: Found {len(audio_files)} audio files", "info")
+                
+                if audio_files:
+                    add_job_log(job_id, f"🔍 Debug: First file: {audio_files[0]}", "info")
+                
+                # Initialize audio enhancer if needed
+                enhancer = None
+                if enhance_audio:
+                    try:
+                        enhancer = AudioEnhancer()
+                        add_job_log(job_id, "✅ AudioEnhancer initialized", "info")
+                    except Exception as e:
+                        add_job_log(job_id, f"⚠️ Failed to initialize AudioEnhancer: {e}", "warning")
+                
+                for item in audio_files:
+                    total += 1
+                    # Preserve relative path structure
+                    rel_path = item.relative_to(temp_dir)
+                    dest_path = output_base / rel_path
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Change extension for webm files
+                    if item.suffix.lower() == '.webm':
+                        dest_path = dest_path.with_suffix('.opus')
+                    
+                    try:
+                        if enhance_audio and enhancer:
+                            add_job_log(job_id, f"🎵 Enhancing ({total}/{len(audio_files)}): {item.name}", "info")
+                            success = enhancer.enhance_audio(str(item), str(dest_path), preset=audio_preset)
+                            
+                            if success:
+                                # Verify the output file has content
+                                if dest_path.exists() and dest_path.stat().st_size > 0:
+                                    processed += 1
+                                else:
+                                    # Enhancement created empty file, copy original instead
+                                    add_job_log(job_id, f"⚠️ Enhancement produced empty file, copying original: {item.name}", "warning")
+                                    if dest_path.exists():
+                                        dest_path.unlink()
+                                    shutil.copy2(str(item), str(dest_path))
+                                    processed += 1
                             else:
+                                # Enhancement failed, copy original
+                                add_job_log(job_id, f"⚠️ Enhancement failed, copying original: {item.name}", "warning")
                                 shutil.copy2(str(item), str(dest_path))
-                            processed += 1
-                        except Exception as e:
-                            add_job_log(job_id, f"⚠️ Error processing {item.name}: {e}", "warning")
-                            # Still copy the file even if enhancement fails
+                                processed += 1
+                        else:
+                            add_job_log(job_id, f"📁 Copying ({total}/{len(audio_files)}): {item.name}", "info")
                             shutil.copy2(str(item), str(dest_path))
                             processed += 1
+                    except Exception as e:
+                        add_job_log(job_id, f"⚠️ Error processing {item.name}: {e}", "warning")
+                        # Still copy the file even if enhancement fails
+                        try:
+                            shutil.copy2(str(item), str(dest_path))
+                            processed += 1
+                        except Exception as copy_err:
+                            add_job_log(job_id, f"❌ Failed to copy {item.name}: {copy_err}", "error")
+                    
+                    # Update progress
+                    progress = 50 + (total / len(audio_files)) * 50
+                    db.update_job_progress(job_id, progress=progress, processed_files=processed)
                 
                 db.update_job_status(job_id, status=JobStatus.COMPLETED)
                 db.update_job_progress(job_id, progress=100, processed_files=processed)
@@ -1448,9 +1710,10 @@ def process_music_download_background(
                         job.total_files = total
                         session.commit()
                 
-                add_job_log(job_id, f"✅ Processed {processed}/{total} music files (playlist structure preserved)", "success")
+                enhancement_status = "with audio enhancement" if enhance_audio and enhancer else "without enhancement"
+                add_job_log(job_id, f"✅ Processed {processed}/{total} music files ({enhancement_status}, playlist structure preserved)", "success")
             
-            elif enhance_audio or lookup_metadata:
+            elif not preserve_playlist and (enhance_audio or lookup_metadata):
                 # Use full music organizer for AllDebrid or single tracks
                 preset_map = {
                     'optimal': AudioPreset.OPTIMAL,

@@ -64,6 +64,7 @@ const MusicOrganizer: React.FC = () => {
   const [enhanceAudio, setEnhanceAudio] = useState<boolean>(true);
   const [lookupMetadata, setLookupMetadata] = useState<boolean>(true);
   const [processing, setProcessing] = useState<boolean>(false);
+  const [enhanceOnly, setEnhanceOnly] = useState<boolean>(true); // New: preserve folder structure
   
   const [status, setStatus] = useState<MusicStatus | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -105,21 +106,33 @@ const MusicOrganizer: React.FC = () => {
     }
 
     setProcessing(true);
-    window.addLog?.(`🎵 Starting music processing...`, 'info');
+    const mode = enhanceOnly ? 'Enhance Only' : 'Organize & Enhance';
+    window.addLog?.(`🎵 Starting music processing (${mode})...`, 'info');
     window.addLog?.(`   Preset: ${preset}, Format: ${outputFormat}`, 'info');
 
     try {
-      const response = await fetch('/api/v1/music/process', {
+      // Use different endpoint based on mode
+      const endpoint = enhanceOnly ? '/api/v1/music/enhance' : '/api/v1/music/process';
+      const body = enhanceOnly 
+        ? {
+            source_path: sourcePath,
+            output_path: outputPath,
+            preset,
+            output_format: outputFormat,
+          }
+        : {
+            source_path: sourcePath,
+            output_path: outputPath,
+            preset,
+            output_format: outputFormat,
+            enhance_audio: enhanceAudio,
+            lookup_metadata: lookupMetadata,
+          };
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_path: sourcePath,
-          output_path: outputPath,
-          preset,
-          output_format: outputFormat,
-          enhance_audio: enhanceAudio,
-          lookup_metadata: lookupMetadata,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data: ProcessResponse = await response.json();
@@ -235,6 +248,56 @@ const MusicOrganizer: React.FC = () => {
             </p>
           </div>
 
+          {/* Processing Mode */}
+          <div className="space-y-3">
+            <label className="text-sm font-semibold text-white flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-cyan-400" />
+              Processing Mode
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setEnhanceOnly(true)}
+                className={`
+                  p-4 rounded-xl border-2 transition-all duration-200 text-left
+                  ${enhanceOnly
+                    ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/20'
+                    : 'border-white/10 hover:border-white/30 hover:bg-white/5'
+                  }
+                `}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className={`h-4 w-4 ${enhanceOnly ? 'text-cyan-400' : 'text-slate-400'}`} />
+                  <span className={`font-semibold ${enhanceOnly ? 'text-white' : 'text-slate-300'}`}>
+                    Enhance Only
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Apply audio enhancement while preserving folder structure
+                </p>
+              </button>
+              <button
+                onClick={() => setEnhanceOnly(false)}
+                className={`
+                  p-4 rounded-xl border-2 transition-all duration-200 text-left
+                  ${!enhanceOnly
+                    ? 'border-pink-500 bg-pink-500/10 shadow-lg shadow-pink-500/20'
+                    : 'border-white/10 hover:border-white/30 hover:bg-white/5'
+                  }
+                `}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Music className={`h-4 w-4 ${!enhanceOnly ? 'text-pink-400' : 'text-slate-400'}`} />
+                  <span className={`font-semibold ${!enhanceOnly ? 'text-white' : 'text-slate-300'}`}>
+                    Organize & Enhance
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Reorganize by Artist/Album with MusicBrainz metadata
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* Audio Enhancement Preset */}
           <div className="space-y-3">
             <label className="text-sm font-semibold text-white flex items-center gap-2">
@@ -296,34 +359,39 @@ const MusicOrganizer: React.FC = () => {
             </div>
           </div>
 
-          {/* Options */}
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={enhanceAudio}
-                onChange={(e) => setEnhanceAudio(e.target.checked)}
-                className="w-4 h-4 rounded border-white/20 bg-white/10 text-pink-500 focus:ring-pink-500/50"
-              />
-              <span className="text-sm text-slate-300">Enhance Audio (EQ + Normalization)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={lookupMetadata}
-                onChange={(e) => setLookupMetadata(e.target.checked)}
-                className="w-4 h-4 rounded border-white/20 bg-white/10 text-pink-500 focus:ring-pink-500/50"
-              />
-              <span className="text-sm text-slate-300">Lookup MusicBrainz Metadata</span>
-            </label>
-          </div>
+          {/* Options - only show when not in enhance-only mode */}
+          {!enhanceOnly && (
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enhanceAudio}
+                  onChange={(e) => setEnhanceAudio(e.target.checked)}
+                  className="w-4 h-4 rounded border-white/20 bg-white/10 text-pink-500 focus:ring-pink-500/50"
+                />
+                <span className="text-sm text-slate-300">Enhance Audio (EQ + Normalization)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={lookupMetadata}
+                  onChange={(e) => setLookupMetadata(e.target.checked)}
+                  className="w-4 h-4 rounded border-white/20 bg-white/10 text-pink-500 focus:ring-pink-500/50"
+                />
+                <span className="text-sm text-slate-300">Lookup MusicBrainz Metadata</span>
+              </label>
+            </div>
+          )}
 
           {/* Process Button */}
           <Button
             onClick={handleProcess}
             disabled={processing || !sourcePath}
             size="lg"
-            className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600"
+            className={`w-full ${enhanceOnly 
+              ? 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600'
+              : 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600'
+            }`}
           >
             {processing ? (
               <>
@@ -333,7 +401,7 @@ const MusicOrganizer: React.FC = () => {
             ) : (
               <>
                 <Play className="h-5 w-5" />
-                Organize & Enhance Music
+                {enhanceOnly ? 'Enhance Audio' : 'Organize & Enhance Music'}
               </>
             )}
           </Button>
@@ -342,15 +410,24 @@ const MusicOrganizer: React.FC = () => {
           <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
             <h4 className="font-semibold text-white flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-blue-400" />
-              What this does:
+              {enhanceOnly ? 'Enhance Only Mode:' : 'Organize & Enhance Mode:'}
             </h4>
-            <ul className="text-sm text-slate-400 space-y-1 ml-6 list-disc">
-              <li>Looks up metadata from MusicBrainz (artist, album, track #, year)</li>
-              <li>Organizes files to: <code className="text-pink-400">/Artist/Album (Year)/01 - Track.ext</code></li>
-              <li>Applies professional audio enhancement (EQ, loudness normalization)</li>
-              <li>Updates ID3/Vorbis tags with accurate metadata</li>
-              <li>Perfect for Plex, Jellyfin, Emby, and other media servers</li>
-            </ul>
+            {enhanceOnly ? (
+              <ul className="text-sm text-slate-400 space-y-1 ml-6 list-disc">
+                <li>Applies professional audio enhancement (EQ, loudness normalization)</li>
+                <li>Preserves your existing folder structure</li>
+                <li>Perfect for already-organized playlists or collections</li>
+                <li>Supports: FLAC, MP3, M4A, Opus, OGG, WAV</li>
+              </ul>
+            ) : (
+              <ul className="text-sm text-slate-400 space-y-1 ml-6 list-disc">
+                <li>Looks up metadata from MusicBrainz (artist, album, track #, year)</li>
+                <li>Organizes files to: <code className="text-pink-400">/Artist/Album (Year)/01 - Track.ext</code></li>
+                <li>Applies professional audio enhancement (EQ, loudness normalization)</li>
+                <li>Updates ID3/Vorbis tags with accurate metadata</li>
+                <li>Perfect for Plex, Jellyfin, Emby, and other media servers</li>
+              </ul>
+            )}
           </div>
         </CardContent>
       </Card>
