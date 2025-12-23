@@ -37,6 +37,7 @@ config.env
 # IDE
 .vscode/
 .idea/
+.kiro/
 *.swp
 *.swo
 *~
