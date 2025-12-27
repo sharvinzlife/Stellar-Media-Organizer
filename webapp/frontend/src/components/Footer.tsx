@@ -313,7 +313,7 @@ const Footer: React.FC = () => {
                     </span>
                   </span>
                 </h3>
-                <p className="text-sm text-slate-400 font-semibold">Organizer Pro v3.0</p>
+                <p className="text-sm text-slate-400 font-semibold">Organizer Pro v3.1</p>
               </div>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed max-w-xs">

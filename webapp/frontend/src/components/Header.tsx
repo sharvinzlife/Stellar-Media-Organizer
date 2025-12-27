@@ -93,7 +93,7 @@ const Header: React.FC = () => {
                   </span>
                 </span>
                 <span className="text-xs px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-500/30 to-pink-500/30 border border-purple-500/40 text-purple-300 font-bold animate-pulse hover:scale-110 hover:border-purple-400/60 transition-all cursor-default shadow-lg shadow-purple-500/20">
-                  ⭐ v3.0
+                  ⭐ v3.1
                 </span>
               </h1>
               <p className="text-xs md:text-sm text-slate-400 flex items-center gap-2 font-medium">

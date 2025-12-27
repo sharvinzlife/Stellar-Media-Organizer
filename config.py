@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     
     # ========== Application Info ==========
     app_name: str = Field(default="Media Organizer Pro", description="Application name")
-    app_version: str = Field(default="3.0.0", description="Application version")
+    app_version: str = Field(default="3.1.0", description="Application version")
     debug: bool = Field(default=False, description="Enable debug mode")
     
     # ========== Paths ==========
