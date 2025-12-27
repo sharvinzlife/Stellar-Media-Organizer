@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Github, Instagram, Twitter, Facebook, Heart, Sparkles, Code2, Zap, Star, Tv, Monitor } from 'lucide-react';
+import { Github, Instagram, Twitter, Facebook, Heart, Sparkles, Code2, Zap, Star } from 'lucide-react';
 
 const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
@@ -45,29 +45,78 @@ const Footer: React.FC = () => {
         {/* Retro TV Section */}
         <div className="flex justify-center mb-16">
           <div className="retro-tv-container group">
+            {/* Antennas */}
+            <div className="relative flex justify-center mb-0">
+              {/* Left Antenna */}
+              <div className="absolute -top-16 left-1/2 -translate-x-20">
+                <div className="relative">
+                  {/* Antenna pole */}
+                  <div 
+                    className="w-2 h-20 bg-gradient-to-b from-slate-400 via-slate-500 to-slate-600 rounded-full shadow-lg"
+                    style={{ transform: 'rotate(-25deg)', transformOrigin: 'bottom center' }}
+                  />
+                  {/* Antenna ball */}
+                  <div 
+                    className="absolute -top-1 left-1/2 -translate-x-1/2 w-4 h-4 bg-gradient-to-br from-slate-300 to-slate-500 rounded-full shadow-lg border border-slate-400"
+                    style={{ transform: 'rotate(-25deg) translateY(-76px) translateX(8px)' }}
+                  />
+                </div>
+              </div>
+              
+              {/* Right Antenna */}
+              <div className="absolute -top-16 left-1/2 translate-x-12">
+                <div className="relative">
+                  {/* Antenna pole */}
+                  <div 
+                    className="w-2 h-20 bg-gradient-to-b from-slate-400 via-slate-500 to-slate-600 rounded-full shadow-lg"
+                    style={{ transform: 'rotate(25deg)', transformOrigin: 'bottom center' }}
+                  />
+                  {/* Antenna ball */}
+                  <div 
+                    className="absolute -top-1 left-1/2 -translate-x-1/2 w-4 h-4 bg-gradient-to-br from-slate-300 to-slate-500 rounded-full shadow-lg border border-slate-400"
+                    style={{ transform: 'rotate(25deg) translateY(-76px) translateX(-8px)' }}
+                  />
+                </div>
+              </div>
+              
+              {/* Antenna base */}
+              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-16 h-4 bg-gradient-to-b from-slate-500 to-slate-700 rounded-t-lg" />
+            </div>
+
             {/* TV Body */}
-            <div className="relative">
-              {/* TV Outer Frame */}
-              <div className="w-80 h-64 bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 rounded-3xl p-4 shadow-2xl border-4 border-slate-600 relative overflow-hidden">
+            <div className="relative mt-2">
+              {/* TV Outer Frame - Retro wooden style */}
+              <div className="w-96 h-72 bg-gradient-to-b from-amber-800 via-amber-900 to-amber-950 rounded-3xl p-5 shadow-2xl border-4 border-amber-700 relative overflow-hidden">
                 {/* Wood grain texture overlay */}
-                <div className="absolute inset-0 opacity-10 bg-gradient-to-br from-amber-900 via-transparent to-amber-800 rounded-3xl" />
+                <div className="absolute inset-0 opacity-20" 
+                     style={{ 
+                       background: 'repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(139, 69, 19, 0.3) 2px, rgba(139, 69, 19, 0.3) 4px)' 
+                     }} 
+                />
                 
-                {/* TV Screen Bezel */}
-                <div className="relative w-full h-full bg-slate-900 rounded-2xl p-3 border-4 border-slate-700 shadow-inner">
+                {/* Inner frame shadow */}
+                <div className="absolute inset-4 rounded-2xl shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]" />
+                
+                {/* TV Screen Bezel - Silver/Chrome */}
+                <div className="relative w-full h-full bg-gradient-to-b from-slate-400 via-slate-500 to-slate-600 rounded-2xl p-3 border-2 border-slate-300 shadow-inner">
                   {/* CRT Screen */}
-                  <div className={`relative w-full h-full bg-black rounded-xl overflow-hidden ${screenGlitch ? 'animate-screen-glitch' : ''}`}>
+                  <div className={`relative w-full h-full bg-black rounded-xl overflow-hidden ${screenGlitch ? 'animate-screen-glitch' : ''}`}
+                       style={{ borderRadius: '20px / 15px' }}>
                     {/* Scanlines */}
-                    <div className="absolute inset-0 pointer-events-none z-20 opacity-30" 
+                    <div className="absolute inset-0 pointer-events-none z-20 opacity-20" 
                          style={{ 
-                           background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px)' 
+                           background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.4) 2px, rgba(0,0,0,0.4) 4px)' 
                          }} 
                     />
                     
                     {/* Screen glow */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-900/30 via-transparent to-cyan-900/30" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-900/40 via-transparent to-cyan-900/40" />
                     
-                    {/* Vignette effect */}
-                    <div className="absolute inset-0 shadow-[inset_0_0_60px_rgba(0,0,0,0.8)] rounded-xl" />
+                    {/* CRT curvature effect */}
+                    <div className="absolute inset-0 shadow-[inset_0_0_80px_rgba(0,0,0,0.9)] rounded-xl" />
+                    
+                    {/* Screen reflection */}
+                    <div className="absolute top-0 left-0 right-0 h-1/3 bg-gradient-to-b from-white/5 to-transparent rounded-t-xl" />
                     
                     {/* Screen content */}
                     <div className="relative z-10 flex flex-col items-center justify-center h-full">
@@ -77,7 +126,8 @@ const Footer: React.FC = () => {
                           className={`text-2xl md:text-3xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-cyan-400 to-pink-400 ${screenGlitch ? 'animate-text-glitch' : ''}`}
                           style={{ 
                             textShadow: '0 0 10px rgba(168, 85, 247, 0.8), 0 0 20px rgba(34, 211, 238, 0.6), 0 0 30px rgba(236, 72, 153, 0.4)',
-                            fontFamily: '"Press Start 2P", "VT323", monospace'
+                            fontFamily: '"VT323", "Press Start 2P", monospace',
+                            fontSize: '2rem'
                           }}
                         >
                           {glitchText}
@@ -88,7 +138,8 @@ const Footer: React.FC = () => {
                           style={{ 
                             clipPath: 'inset(10% 0 60% 0)',
                             transform: screenGlitch ? 'translateX(-3px)' : 'translateX(0)',
-                            fontFamily: '"Press Start 2P", "VT323", monospace'
+                            fontFamily: '"VT323", "Press Start 2P", monospace',
+                            fontSize: '2rem'
                           }}
                         >
                           {glitchText}
@@ -98,7 +149,8 @@ const Footer: React.FC = () => {
                           style={{ 
                             clipPath: 'inset(60% 0 10% 0)',
                             transform: screenGlitch ? 'translateX(3px)' : 'translateX(0)',
-                            fontFamily: '"Press Start 2P", "VT323", monospace'
+                            fontFamily: '"VT323", "Press Start 2P", monospace',
+                            fontSize: '2rem'
                           }}
                         >
                           {glitchText}
@@ -106,14 +158,14 @@ const Footer: React.FC = () => {
                       </div>
                       
                       {/* Subtitle */}
-                      <p className="mt-3 text-xs text-slate-400 tracking-widest animate-pulse">
+                      <p className="mt-4 text-sm text-emerald-400 tracking-widest animate-pulse font-mono">
                         ▶ NOW PLAYING ▶
                       </p>
                     </div>
                     
                     {/* Random noise overlay on glitch */}
                     {screenGlitch && (
-                      <div className="absolute inset-0 z-30 opacity-20" 
+                      <div className="absolute inset-0 z-30 opacity-30 bg-white mix-blend-overlay" 
                            style={{ 
                              background: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noise)\'/%3E%3C/svg%3E")' 
                            }} 
@@ -122,26 +174,58 @@ const Footer: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* TV Controls */}
-                <div className="absolute -right-3 top-1/2 -translate-y-1/2 flex flex-col gap-3">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 border-2 border-slate-400 shadow-lg cursor-pointer hover:scale-110 transition-transform" />
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-slate-500 to-slate-700 border-2 border-slate-400 shadow-lg cursor-pointer hover:scale-110 transition-transform" />
+                {/* Control Panel - Right side */}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-4 bg-gradient-to-b from-amber-700 to-amber-800 p-2 rounded-lg border border-amber-600">
+                  {/* Channel knob */}
+                  <div className="relative group/knob cursor-pointer">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-200 via-slate-300 to-slate-400 border-4 border-slate-500 shadow-lg hover:scale-110 transition-transform">
+                      <div className="absolute inset-2 rounded-full bg-gradient-to-br from-slate-100 to-slate-300 flex items-center justify-center">
+                        <div className="w-1 h-3 bg-slate-600 rounded-full" />
+                      </div>
+                    </div>
+                    <span className="absolute -left-12 top-1/2 -translate-y-1/2 text-[8px] text-amber-300 font-bold opacity-0 group-hover/knob:opacity-100 transition-opacity">CH</span>
+                  </div>
+                  
+                  {/* Volume knob */}
+                  <div className="relative group/knob cursor-pointer">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-200 via-slate-300 to-slate-400 border-4 border-slate-500 shadow-lg hover:scale-110 transition-transform">
+                      <div className="absolute inset-2 rounded-full bg-gradient-to-br from-slate-100 to-slate-300 flex items-center justify-center">
+                        <div className="w-1 h-3 bg-slate-600 rounded-full transform rotate-45" />
+                      </div>
+                    </div>
+                    <span className="absolute -left-12 top-1/2 -translate-y-1/2 text-[8px] text-amber-300 font-bold opacity-0 group-hover/knob:opacity-100 transition-opacity">VOL</span>
+                  </div>
                 </div>
                 
-                {/* Power LED */}
-                <div className="absolute bottom-2 right-4 flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/50 animate-pulse" />
-                  <span className="text-[8px] text-slate-500 font-bold tracking-wider">POWER</span>
+                {/* Bottom panel with speaker grille and power */}
+                <div className="absolute bottom-2 left-5 right-5 flex items-center justify-between">
+                  {/* Speaker grille */}
+                  <div className="flex gap-1">
+                    {[...Array(8)].map((_, i) => (
+                      <div key={i} className="w-1 h-8 bg-gradient-to-b from-amber-600 to-amber-800 rounded-full opacity-60" />
+                    ))}
+                  </div>
+                  
+                  {/* Brand and Power */}
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] text-amber-400 font-bold tracking-widest">STELLAR</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse border border-emerald-400" />
+                      <span className="text-[8px] text-amber-400 font-bold">POWER</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               
-              {/* TV Stand */}
-              <div className="flex justify-center -mt-1">
-                <div className="w-32 h-4 bg-gradient-to-b from-slate-700 to-slate-800 rounded-b-lg border-x-4 border-b-4 border-slate-600" />
+              {/* TV Stand - Retro legs */}
+              <div className="flex justify-center">
+                <div className="w-48 h-3 bg-gradient-to-b from-amber-700 to-amber-900 rounded-b-lg border-x-2 border-b-2 border-amber-600" />
               </div>
-              <div className="flex justify-center gap-16 -mt-1">
-                <div className="w-8 h-6 bg-gradient-to-b from-slate-600 to-slate-700 rounded-b-lg" />
-                <div className="w-8 h-6 bg-gradient-to-b from-slate-600 to-slate-700 rounded-b-lg" />
+              <div className="flex justify-center gap-24 -mt-0.5">
+                {/* Left leg */}
+                <div className="w-6 h-12 bg-gradient-to-b from-amber-800 to-amber-950 rounded-b-lg transform -skew-x-12 border-l-2 border-b-2 border-amber-700" />
+                {/* Right leg */}
+                <div className="w-6 h-12 bg-gradient-to-b from-amber-800 to-amber-950 rounded-b-lg transform skew-x-12 border-r-2 border-b-2 border-amber-700" />
               </div>
             </div>
           </div>
