@@ -6,6 +6,7 @@ const Footer: React.FC = () => {
   const [glitchText, setGlitchText] = useState('STELLAR MEDIA');
   const [screenGlitch, setScreenGlitch] = useState(false);
   const [intensiveGlitch, setIntensiveGlitch] = useState(false);
+  const [colorShift, setColorShift] = useState(0);
 
   // Random glitch effects on the TV screen
   useEffect(() => {
@@ -25,9 +26,15 @@ const Footer: React.FC = () => {
       setGlitchText(texts[Math.floor(Math.random() * texts.length)]);
     }, 2500);
 
+    // Color shift animation
+    const colorInterval = setInterval(() => {
+      setColorShift(prev => (prev + 1) % 360);
+    }, 50);
+
     return () => {
       clearInterval(glitchInterval);
       clearInterval(textInterval);
+      clearInterval(colorInterval);
     };
   }, []);
 
@@ -53,7 +60,7 @@ const Footer: React.FC = () => {
             {/* Antennas - Simple metal rods */}
             <div className="relative flex justify-center mb-0">
               {/* Left Antenna */}
-              <div className="absolute -top-20 left-1/2 -translate-x-20">
+              <div className="absolute -top-20 left-1/2 -translate-x-24">
                 <div 
                   className="w-1.5 h-24 bg-gradient-to-b from-slate-300 via-slate-400 to-slate-500 rounded-full shadow-lg"
                   style={{ transform: 'rotate(-30deg)', transformOrigin: 'bottom center' }}
@@ -61,7 +68,7 @@ const Footer: React.FC = () => {
               </div>
               
               {/* Right Antenna */}
-              <div className="absolute -top-20 left-1/2 translate-x-16">
+              <div className="absolute -top-20 left-1/2 translate-x-20">
                 <div 
                   className="w-1.5 h-24 bg-gradient-to-b from-slate-300 via-slate-400 to-slate-500 rounded-full shadow-lg"
                   style={{ transform: 'rotate(30deg)', transformOrigin: 'bottom center' }}
@@ -69,13 +76,13 @@ const Footer: React.FC = () => {
               </div>
               
               {/* Antenna base */}
-              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-12 h-3 bg-gradient-to-b from-amber-700 to-amber-900 rounded-t-lg" />
+              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-14 h-3 bg-gradient-to-b from-amber-700 to-amber-900 rounded-t-lg" />
             </div>
 
             {/* TV Body - Wooden frame with grey/black interior */}
             <div className="relative mt-2">
               {/* Outer wooden frame */}
-              <div className={`w-[480px] h-[340px] bg-gradient-to-b from-amber-700 via-amber-800 to-amber-900 rounded-3xl p-4 shadow-2xl border-4 border-amber-600 relative overflow-hidden ${intensiveGlitch ? 'animate-tv-shake' : ''}`}>
+              <div className={`w-[580px] h-[320px] bg-gradient-to-b from-amber-700 via-amber-800 to-amber-900 rounded-3xl p-4 shadow-2xl border-4 border-amber-600 relative overflow-hidden ${intensiveGlitch ? 'animate-tv-shake' : ''}`}>
                 {/* Wood grain texture */}
                 <div className="absolute inset-0 opacity-20" 
                      style={{ 
@@ -84,7 +91,7 @@ const Footer: React.FC = () => {
                 />
                 
                 {/* Inner grey/black frame */}
-                <div className="w-full h-full bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 rounded-2xl p-4 border-2 border-slate-600 relative">
+                <div className="w-full h-full bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 rounded-2xl p-3 border-2 border-slate-600 relative">
                   {/* Brushed metal texture */}
                   <div className="absolute inset-0 opacity-10 rounded-2xl" 
                        style={{ 
@@ -93,86 +100,88 @@ const Footer: React.FC = () => {
                   />
                   
                   {/* Screen area with control panel */}
-                  <div className="flex h-full gap-4">
-                    {/* Left decorative panel */}
-                    <div className="w-8 flex flex-col justify-center items-center gap-3">
-                      {/* Decorative vents */}
-                      {[...Array(6)].map((_, i) => (
-                        <div key={i} className="w-full h-1 bg-slate-900 rounded-full" />
-                      ))}
-                    </div>
-                    
-                    {/* Main Screen */}
+                  <div className="flex h-full gap-3">
+                    {/* Main Screen - WIDER */}
                     <div className="flex-1 relative">
                       {/* TV Screen Bezel - Dark chrome */}
                       <div className="relative w-full h-full bg-gradient-to-b from-slate-500 via-slate-600 to-slate-700 rounded-xl p-2 border border-slate-400 shadow-inner">
                         {/* CRT Screen */}
-                        <div className={`relative w-full h-full bg-black rounded-lg overflow-hidden`}
+                        <div className="relative w-full h-full bg-black rounded-lg overflow-hidden"
                              style={{ borderRadius: '12px' }}>
+                          {/* Animated background gradient */}
+                          <div 
+                            className="absolute inset-0 opacity-30 transition-all duration-100"
+                            style={{ 
+                              background: `linear-gradient(${colorShift}deg, rgba(168, 85, 247, 0.3), rgba(34, 211, 238, 0.3), rgba(236, 72, 153, 0.3))` 
+                            }} 
+                          />
+                          
                           {/* Scanlines - inside screen */}
-                          <div className="absolute inset-0 pointer-events-none z-20 opacity-30" 
+                          <div className="absolute inset-0 pointer-events-none z-20 opacity-25" 
                                style={{ 
                                  background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.5) 2px, rgba(0,0,0,0.5) 4px)' 
                                }} 
                           />
                           
                           {/* Screen glow */}
-                          <div className={`absolute inset-0 bg-gradient-to-br from-purple-900/50 via-transparent to-cyan-900/50 transition-opacity ${intensiveGlitch ? 'opacity-80' : 'opacity-100'}`} />
+                          <div className={`absolute inset-0 bg-gradient-to-br from-purple-900/40 via-transparent to-cyan-900/40 transition-opacity ${intensiveGlitch ? 'opacity-80' : 'opacity-100'}`} />
                           
                           {/* CRT curvature effect */}
-                          <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(0,0,0,0.95)] rounded-lg" />
+                          <div className="absolute inset-0 shadow-[inset_0_0_80px_rgba(0,0,0,0.9)] rounded-lg" />
                           
                           {/* Screen reflection */}
-                          <div className="absolute top-0 left-0 right-0 h-1/4 bg-gradient-to-b from-white/8 to-transparent rounded-t-lg" />
+                          <div className="absolute top-0 left-0 right-0 h-1/4 bg-gradient-to-b from-white/10 to-transparent rounded-t-lg" />
                           
                           {/* Horizontal glitch lines - INSIDE SCREEN */}
                           {(screenGlitch || intensiveGlitch) && (
                             <>
-                              <div className="absolute left-0 right-0 h-1 bg-cyan-400/60 z-30" style={{ top: '15%' }} />
-                              <div className="absolute left-0 right-0 h-0.5 bg-pink-400/40 z-30" style={{ top: '35%' }} />
-                              <div className="absolute left-0 right-0 h-2 bg-white/20 z-30" style={{ top: '50%' }} />
-                              <div className="absolute left-0 right-0 h-0.5 bg-purple-400/50 z-30" style={{ top: '65%' }} />
-                              <div className="absolute left-0 right-0 h-1.5 bg-cyan-400/30 z-30" style={{ top: '80%' }} />
+                              <div className="absolute left-0 right-0 h-1 bg-cyan-400/70 z-30 animate-pulse" style={{ top: '12%' }} />
+                              <div className="absolute left-0 right-0 h-0.5 bg-pink-400/50 z-30" style={{ top: '28%' }} />
+                              <div className="absolute left-0 right-0 h-3 bg-white/10 z-30" style={{ top: '45%' }} />
+                              <div className="absolute left-0 right-0 h-0.5 bg-purple-400/60 z-30" style={{ top: '62%' }} />
+                              <div className="absolute left-0 right-0 h-1.5 bg-cyan-400/40 z-30" style={{ top: '78%' }} />
+                              <div className="absolute left-0 right-0 h-0.5 bg-yellow-400/30 z-30" style={{ top: '88%' }} />
                             </>
                           )}
                           
-                          {/* Screen content */}
+                          {/* Screen content - CENTERED */}
                           <div className={`relative z-10 flex flex-col items-center justify-center h-full ${screenGlitch ? 'animate-screen-glitch' : ''} ${intensiveGlitch ? 'animate-intensive-glitch' : ''}`}>
-                            {/* Glitchy text */}
-                            <div className="relative">
+                            {/* Glitchy text - CENTERED */}
+                            <div className="relative text-center">
                               <h2 
-                                className={`text-3xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-cyan-400 to-pink-400 ${screenGlitch ? 'animate-text-glitch' : ''} ${intensiveGlitch ? 'animate-text-intensive' : ''}`}
+                                className={`font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-cyan-400 to-pink-400 ${screenGlitch ? 'animate-text-glitch' : ''} ${intensiveGlitch ? 'animate-text-intensive' : ''}`}
                                 style={{ 
-                                  textShadow: '0 0 15px rgba(168, 85, 247, 0.9), 0 0 30px rgba(34, 211, 238, 0.7), 0 0 45px rgba(236, 72, 153, 0.5)',
+                                  textShadow: '0 0 20px rgba(168, 85, 247, 1), 0 0 40px rgba(34, 211, 238, 0.8), 0 0 60px rgba(236, 72, 153, 0.6)',
                                   fontFamily: '"VT323", monospace',
-                                  fontSize: '2.5rem',
-                                  letterSpacing: '0.15em'
+                                  fontSize: '3rem',
+                                  letterSpacing: '0.2em',
+                                  lineHeight: '1.2'
                                 }}
                               >
                                 {glitchText}
                               </h2>
                               {/* Glitch layers */}
                               <h2 
-                                className="absolute top-0 left-0 text-3xl font-black tracking-wider text-cyan-400 opacity-80"
+                                className="absolute top-0 left-0 right-0 font-black tracking-wider text-cyan-400 opacity-80 text-center"
                                 style={{ 
                                   clipPath: 'inset(10% 0 60% 0)',
-                                  transform: screenGlitch || intensiveGlitch ? 'translateX(-4px)' : 'translateX(0)',
+                                  transform: screenGlitch || intensiveGlitch ? 'translateX(-5px)' : 'translateX(0)',
                                   fontFamily: '"VT323", monospace',
-                                  fontSize: '2.5rem',
-                                  letterSpacing: '0.15em',
+                                  fontSize: '3rem',
+                                  letterSpacing: '0.2em',
                                   transition: 'transform 0.05s'
                                 }}
                               >
                                 {glitchText}
                               </h2>
                               <h2 
-                                className="absolute top-0 left-0 text-3xl font-black tracking-wider text-pink-400 opacity-80"
+                                className="absolute top-0 left-0 right-0 font-black tracking-wider text-pink-400 opacity-80 text-center"
                                 style={{ 
                                   clipPath: 'inset(60% 0 10% 0)',
-                                  transform: screenGlitch || intensiveGlitch ? 'translateX(4px)' : 'translateX(0)',
+                                  transform: screenGlitch || intensiveGlitch ? 'translateX(5px)' : 'translateX(0)',
                                   fontFamily: '"VT323", monospace',
-                                  fontSize: '2.5rem',
-                                  letterSpacing: '0.15em',
+                                  fontSize: '3rem',
+                                  letterSpacing: '0.2em',
                                   transition: 'transform 0.05s'
                                 }}
                               >
@@ -180,73 +189,87 @@ const Footer: React.FC = () => {
                               </h2>
                             </div>
                             
-                            {/* Subtitle */}
-                            <p className={`mt-5 text-sm tracking-widest font-mono ${intensiveGlitch ? 'text-pink-400' : 'text-emerald-400'} ${screenGlitch ? 'opacity-50' : 'opacity-100'}`}>
+                            {/* Subtitle - CENTERED */}
+                            <p className={`mt-4 text-base tracking-[0.3em] font-mono text-center ${intensiveGlitch ? 'text-pink-400' : 'text-emerald-400'} ${screenGlitch ? 'opacity-50' : 'opacity-100'}`}
+                               style={{ textShadow: '0 0 10px currentColor' }}>
                               ▶ NOW PLAYING ▶
                             </p>
+                            
+                            {/* Decorative dots */}
+                            <div className="flex items-center gap-2 mt-3">
+                              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-lg shadow-red-500/50" />
+                              <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shadow-lg shadow-yellow-500/50" style={{ animationDelay: '0.2s' }} />
+                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-lg shadow-green-500/50" style={{ animationDelay: '0.4s' }} />
+                            </div>
                           </div>
                           
                           {/* Random noise overlay on glitch - INSIDE SCREEN */}
                           {(screenGlitch || intensiveGlitch) && (
                             <div className="absolute inset-0 z-30 opacity-40 mix-blend-overlay animate-noise" />
                           )}
+                          
+                          {/* Corner decorations */}
+                          <div className="absolute top-2 left-2 w-4 h-4 border-l-2 border-t-2 border-cyan-500/30 rounded-tl" />
+                          <div className="absolute top-2 right-2 w-4 h-4 border-r-2 border-t-2 border-cyan-500/30 rounded-tr" />
+                          <div className="absolute bottom-2 left-2 w-4 h-4 border-l-2 border-b-2 border-purple-500/30 rounded-bl" />
+                          <div className="absolute bottom-2 right-2 w-4 h-4 border-r-2 border-b-2 border-purple-500/30 rounded-br" />
                         </div>
                       </div>
                     </div>
                     
                     {/* Control Panel - Right side */}
-                    <div className="w-20 flex flex-col justify-between py-2">
+                    <div className="w-16 flex flex-col justify-between py-1">
                       {/* Top buttons */}
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {/* Power button */}
                         <button className="w-full group/btn">
-                          <div className="w-10 h-10 mx-auto rounded-full bg-gradient-to-br from-slate-600 to-slate-800 border-2 border-slate-500 shadow-lg flex items-center justify-center hover:scale-110 hover:border-emerald-500/50 transition-all">
-                            <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse" />
+                          <div className="w-9 h-9 mx-auto rounded-full bg-gradient-to-br from-slate-600 to-slate-800 border-2 border-slate-500 shadow-lg flex items-center justify-center hover:scale-110 hover:border-emerald-500/50 transition-all">
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 animate-pulse" />
                           </div>
-                          <span className="text-[8px] text-slate-400 mt-1 block">POWER</span>
+                          <span className="text-[7px] text-slate-400 mt-0.5 block text-center">POWER</span>
                         </button>
                         
                         {/* Channel buttons */}
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           <button className="w-full">
-                            <div className="w-8 h-6 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
-                              <span className="text-[10px] text-slate-300 font-bold">▲</span>
+                            <div className="w-7 h-5 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
+                              <span className="text-[9px] text-slate-300 font-bold">▲</span>
                             </div>
                           </button>
-                          <span className="text-[8px] text-slate-400 block text-center">CH</span>
+                          <span className="text-[7px] text-slate-400 block text-center">CH</span>
                           <button className="w-full">
-                            <div className="w-8 h-6 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
-                              <span className="text-[10px] text-slate-300 font-bold">▼</span>
+                            <div className="w-7 h-5 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
+                              <span className="text-[9px] text-slate-300 font-bold">▼</span>
                             </div>
                           </button>
                         </div>
                       </div>
                       
                       {/* Volume buttons */}
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         <button className="w-full">
-                          <div className="w-8 h-6 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
-                            <span className="text-[10px] text-slate-300 font-bold">+</span>
+                          <div className="w-7 h-5 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
+                            <span className="text-[9px] text-slate-300 font-bold">+</span>
                           </div>
                         </button>
-                        <span className="text-[8px] text-slate-400 block text-center">VOL</span>
+                        <span className="text-[7px] text-slate-400 block text-center">VOL</span>
                         <button className="w-full">
-                          <div className="w-8 h-6 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
-                            <span className="text-[10px] text-slate-300 font-bold">−</span>
+                          <div className="w-7 h-5 mx-auto rounded bg-gradient-to-b from-slate-500 to-slate-700 border border-slate-400 shadow flex items-center justify-center hover:scale-110 hover:bg-slate-600 transition-all">
+                            <span className="text-[9px] text-slate-300 font-bold">−</span>
                           </div>
                         </button>
                       </div>
                       
                       {/* Brand */}
                       <div className="text-center">
-                        <span className="text-[9px] text-slate-500 font-bold tracking-widest">STELLAR</span>
+                        <span className="text-[8px] text-amber-400/80 font-bold tracking-widest">STELLAR</span>
                       </div>
                     </div>
                   </div>
                   
-                  {/* Bottom vent/speaker grille */}
-                  <div className="absolute bottom-2 left-12 right-24 flex gap-0.5">
-                    {[...Array(25)].map((_, i) => (
+                  {/* Bottom speaker grille */}
+                  <div className="absolute bottom-1.5 left-4 right-20 flex gap-0.5">
+                    {[...Array(35)].map((_, i) => (
                       <div key={i} className="flex-1 h-1 bg-slate-900 rounded-full" />
                     ))}
                   </div>
@@ -255,20 +278,16 @@ const Footer: React.FC = () => {
               
               {/* TV Stand - Wooden */}
               <div className="flex justify-center">
-                <div className="w-48 h-3 bg-gradient-to-b from-amber-700 to-amber-900 rounded-b-lg border-x-2 border-b-2 border-amber-600" />
+                <div className="w-56 h-3 bg-gradient-to-b from-amber-700 to-amber-900 rounded-b-lg border-x-2 border-b-2 border-amber-600" />
               </div>
-              <div className="flex justify-center gap-24 -mt-0.5">
+              <div className="flex justify-center gap-28 -mt-0.5">
                 {/* Left leg - wooden */}
-                <div className="w-5 h-10 bg-gradient-to-b from-amber-700 via-amber-800 to-amber-950 rounded-b transform -skew-x-6 border-l border-b border-amber-600" 
-                     style={{ 
-                       background: 'linear-gradient(180deg, #b45309, #78350f, #451a03)'
-                     }}
+                <div className="w-5 h-10 rounded-b transform -skew-x-6 border-l border-b border-amber-600" 
+                     style={{ background: 'linear-gradient(180deg, #b45309, #78350f, #451a03)' }}
                 />
                 {/* Right leg - wooden */}
-                <div className="w-5 h-10 bg-gradient-to-b from-amber-700 via-amber-800 to-amber-950 rounded-b transform skew-x-6 border-r border-b border-amber-600"
-                     style={{ 
-                       background: 'linear-gradient(180deg, #b45309, #78350f, #451a03)'
-                     }}
+                <div className="w-5 h-10 rounded-b transform skew-x-6 border-r border-b border-amber-600"
+                     style={{ background: 'linear-gradient(180deg, #b45309, #78350f, #451a03)' }}
                 />
               </div>
             </div>
