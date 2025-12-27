@@ -90,6 +90,27 @@ check_npm() {
     print_success "npm found: $(npm --version)"
 }
 
+# Check for system dependencies (mkvtoolnix, ffmpeg)
+check_system_deps() {
+    # Check mkvtoolnix
+    if command -v mkvmerge &> /dev/null; then
+        print_success "MKVToolNix found: $(mkvmerge --version | head -1)"
+    else
+        print_warning "MKVToolNix not found (optional - needed for audio filtering)"
+        print_info "  Install: sudo apt install mkvtoolnix (Debian/Ubuntu)"
+        print_info "           brew install mkvtoolnix (macOS)"
+    fi
+    
+    # Check ffmpeg
+    if command -v ffmpeg &> /dev/null; then
+        print_success "FFmpeg found: $(ffmpeg -version 2>&1 | head -1)"
+    else
+        print_warning "FFmpeg not found (optional - needed for video conversion)"
+        print_info "  Install: sudo apt install ffmpeg (Debian/Ubuntu)"
+        print_info "           brew install ffmpeg (macOS)"
+    fi
+}
+
 # Setup backend
 setup_backend() {
     print_info "Setting up backend..."
@@ -156,6 +177,7 @@ main() {
     check_python
     check_node
     check_npm
+    check_system_deps
     echo ""
     
     # Setup
