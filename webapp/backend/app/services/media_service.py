@@ -365,6 +365,9 @@ class AudioTrackFilter:
             'kannada': ['kannada', 'kan', 'kn', 'ಕನ್ನಡ'],
             'bengali': ['bengali', 'ben', 'bn', 'বাংলা']
         }
+        
+        # Language priority for auto-detection: Malayalam > English > Hindi
+        self.language_priority = ['malayalam', 'english', 'hindi']
     
     def check_mkvtoolnix_available(self) -> bool:
         """Check if MKVToolNix is installed."""
@@ -419,6 +422,97 @@ class AudioTrackFilter:
         except Exception as e:
             logger.error(f"Error getting track info for {file_path}: {e}")
             return {}
+    
+    def detect_available_languages(self, file_path: Path) -> List[str]:
+        """Detect all available audio languages in a media file."""
+        track_info = self.get_track_info(file_path)
+        if not track_info:
+            return []
+        
+        detected_languages = []
+        for track in track_info.get('audio_tracks', []):
+            lang = track.get('language', '').lower()
+            track_name = track.get('track_name', '').lower()
+            
+            # Check each known language
+            for language, keywords in self.language_keywords.items():
+                if lang in keywords or any(kw in track_name for kw in keywords):
+                    if language not in detected_languages:
+                        detected_languages.append(language)
+        
+        return detected_languages
+    
+    def auto_select_language(self, file_path: Path) -> Optional[str]:
+        """
+        Auto-select the best audio language based on priority.
+        Priority: Malayalam > English > Hindi
+        Returns the selected language or None if no supported language found.
+        """
+        available = self.detect_available_languages(file_path)
+        logger.info(f"Detected languages in {file_path.name}: {available}")
+        
+        # Check priority order
+        for lang in self.language_priority:
+            if lang in available:
+                logger.info(f"Auto-selected language: {lang}")
+                return lang
+        
+        # If none of the priority languages found, return first available
+        if available:
+            logger.info(f"No priority language found, using: {available[0]}")
+            return available[0]
+        
+        return None
+    
+    def get_routing_info(self, file_path: Path, is_series: bool = False) -> Dict:
+        """
+        Get smart routing information for a media file.
+        Returns NAS destination and category based on detected language.
+        
+        Rules:
+        - Malayalam/English: Can go to either Lharmony or Streamwave
+        - Hindi: Must go to Lharmony (Streamwave doesn't have Hindi folder)
+        - Series: Check for existing series folder
+        """
+        selected_language = self.auto_select_language(file_path)
+        
+        routing = {
+            'detected_language': selected_language,
+            'available_languages': self.detect_available_languages(file_path),
+            'recommended_nas': None,
+            'recommended_category': None,
+            'hindi_only': False,
+            'is_series': is_series
+        }
+        
+        if selected_language == 'hindi':
+            # Hindi content must go to Lharmony
+            routing['recommended_nas'] = 'Lharmony'
+            routing['hindi_only'] = True
+            if is_series:
+                routing['recommended_category'] = 'tv'  # Lharmony uses 'tv' for TV shows
+            else:
+                routing['recommended_category'] = 'bollywood movies'
+        elif selected_language == 'malayalam':
+            # Malayalam can go to either, prefer based on content type
+            routing['recommended_nas'] = 'Lharmony'  # Default to Lharmony for Malayalam
+            if is_series:
+                routing['recommended_category'] = 'malayalam tv shows'
+            else:
+                routing['recommended_category'] = 'malayalam movies'
+        elif selected_language == 'english':
+            # English content - standard categories
+            routing['recommended_nas'] = 'Streamwave'  # Streamwave for English
+            if is_series:
+                routing['recommended_category'] = 'tv-shows'
+            else:
+                routing['recommended_category'] = 'movies'
+        else:
+            # Default routing
+            routing['recommended_nas'] = 'Lharmony'
+            routing['recommended_category'] = 'movies' if not is_series else 'tv'
+        
+        return routing
     
     def is_language_track(self, track: Dict, target_language: str) -> bool:
         """Check if a track matches the target language."""
@@ -534,3 +628,204 @@ class AudioTrackFilter:
                 processed_files.append(mkv_file)
         
         return processed_files
+
+
+class SmartNASRouter:
+    """Smart routing service for NAS destinations with series folder detection."""
+    
+    def __init__(self):
+        self.audio_filter = AudioTrackFilter()
+        self.series_detector = SeriesDetector()
+    
+    def find_existing_series_folder(self, nas_base_path: Path, series_name: str, year: Optional[int] = None) -> Optional[Path]:
+        """
+        Find an existing series folder on NAS.
+        Searches for folders matching the series name (with or without year).
+        """
+        if not nas_base_path.exists():
+            return None
+        
+        # Normalize series name for comparison
+        normalized_name = series_name.lower().strip()
+        
+        # Possible folder name patterns
+        patterns = [
+            f"{series_name}",
+            f"{series_name} ({year})" if year else None,
+        ]
+        patterns = [p for p in patterns if p]
+        
+        # Search in the base path
+        for folder in nas_base_path.iterdir():
+            if not folder.is_dir():
+                continue
+            
+            folder_name = folder.name.lower().strip()
+            
+            # Check exact match
+            for pattern in patterns:
+                if folder_name == pattern.lower():
+                    logger.info(f"Found existing series folder: {folder}")
+                    return folder
+            
+            # Check partial match (series name without year)
+            if normalized_name in folder_name or folder_name.startswith(normalized_name):
+                logger.info(f"Found matching series folder: {folder}")
+                return folder
+        
+        return None
+    
+    def get_series_destination(self, file_path: Path, nas_base_path: Path, 
+                                series_name: str, season: int, year: Optional[int] = None) -> Path:
+        """
+        Get the destination path for a series episode.
+        Checks for existing series folder first, creates new one if not found.
+        """
+        # Try to find existing series folder
+        existing_folder = self.find_existing_series_folder(nas_base_path, series_name, year)
+        
+        if existing_folder:
+            # Use existing folder
+            series_folder = existing_folder
+            logger.info(f"Using existing series folder: {series_folder}")
+        else:
+            # Create new series folder
+            series_folder = self.series_detector.create_series_folder_structure(
+                nas_base_path, series_name, year
+            )
+            logger.info(f"Created new series folder: {series_folder}")
+        
+        # Create season subfolder if needed (Season 01, Season 02, etc.)
+        season_folder = series_folder / f"Season {season:02d}"
+        season_folder.mkdir(exist_ok=True)
+        
+        return season_folder
+    
+    def analyze_and_route(self, file_path: Path, nas_configs: Dict) -> Dict:
+        """
+        Analyze a media file and determine optimal routing.
+        
+        Returns:
+            {
+                'file_path': str,
+                'is_series': bool,
+                'series_info': {...} or None,
+                'detected_language': str,
+                'available_languages': [...],
+                'recommended_nas': str,
+                'recommended_category': str,
+                'destination_path': str,
+                'hindi_only': bool
+            }
+        """
+        from app.services.media_service import MediaOrganizer
+        
+        organizer = MediaOrganizer()
+        media_file = organizer.analyze_media_file(file_path)
+        
+        # Get language routing info
+        routing = self.audio_filter.get_routing_info(file_path, media_file.is_series)
+        
+        result = {
+            'file_path': str(file_path),
+            'original_name': media_file.original_name,
+            'cleaned_name': media_file.cleaned_name,
+            'is_series': media_file.is_series,
+            'series_info': None,
+            **routing
+        }
+        
+        if media_file.is_series:
+            result['series_info'] = {
+                'name': media_file.series_name,
+                'season': media_file.season,
+                'episode': media_file.episode,
+                'year': media_file.year
+            }
+        
+        return result
+    
+    def process_file_to_nas(self, file_path: Path, nas_name: str, category: str,
+                           nas_base_path: Path, auto_language: bool = True) -> Dict:
+        """
+        Process a file and move it to the appropriate NAS location.
+        
+        Args:
+            file_path: Source file path
+            nas_name: Target NAS name
+            category: Target category (movies, tv, etc.)
+            nas_base_path: Base path on NAS for the category
+            auto_language: Whether to auto-detect and filter language
+        
+        Returns:
+            Processing result with destination info
+        """
+        from app.services.media_service import MediaOrganizer
+        
+        organizer = MediaOrganizer()
+        media_file = organizer.analyze_media_file(file_path)
+        
+        result = {
+            'success': False,
+            'source': str(file_path),
+            'destination': None,
+            'language_filtered': None,
+            'message': ''
+        }
+        
+        try:
+            # Auto-detect and filter language if enabled
+            if auto_language and self.audio_filter.check_mkvtoolnix_available():
+                selected_lang = self.audio_filter.auto_select_language(file_path)
+                if selected_lang:
+                    result['language_filtered'] = selected_lang
+                    # Filter audio tracks
+                    self.audio_filter.filter_language_audio(file_path, selected_lang)
+            
+            # Determine destination
+            if media_file.is_series and media_file.series_name:
+                # Series: find or create series folder
+                dest_folder = self.get_series_destination(
+                    file_path, nas_base_path,
+                    media_file.series_name,
+                    media_file.season or 1,
+                    media_file.year
+                )
+                
+                # Create proper episode filename
+                new_filename = self.series_detector.create_episode_filename(
+                    media_file.series_name,
+                    media_file.season or 1,
+                    media_file.episode or 1,
+                    media_file.year,
+                    file_path.suffix
+                )
+                dest_path = dest_folder / new_filename
+            else:
+                # Movie: create movie folder
+                if media_file.cleaned_name:
+                    folder_name = Path(media_file.cleaned_name).stem
+                else:
+                    folder_name = file_path.stem
+                
+                folder_name = re.sub(r'[<>:"|*?]', '_', folder_name).strip()
+                dest_folder = nas_base_path / folder_name
+                dest_folder.mkdir(exist_ok=True)
+                
+                new_filename = media_file.cleaned_name or file_path.name
+                if not new_filename.endswith(file_path.suffix):
+                    new_filename += file_path.suffix
+                dest_path = dest_folder / new_filename
+            
+            # Move file
+            shutil.move(str(file_path), str(dest_path))
+            
+            result['success'] = True
+            result['destination'] = str(dest_path)
+            result['message'] = f"Moved to {nas_name}/{category}"
+            
+        except Exception as e:
+            result['message'] = f"Error: {str(e)}"
+            logger.error(f"Error processing file to NAS: {e}")
+        
+        return result

@@ -442,6 +442,7 @@ async def get_alldebrid_status():
 class AllDebridDownloadRequest(BaseModel):
     links: List[str]
     output_path: Optional[str] = None
+    auto_route: bool = True  # Enable smart routing by default
 
 
 @router.post("/alldebrid")
@@ -454,5 +455,58 @@ async def download_from_alldebrid(request: AllDebridDownloadRequest):
     return {
         "success": True,
         "message": f"Started download of {len(request.links)} links",
-        "links": request.links
+        "links": request.links,
+        "auto_route": request.auto_route
+    }
+
+
+# ============================================================================
+# Smart Routing Endpoints
+# ============================================================================
+
+@router.post("/analyze/routing")
+async def analyze_file_routing(file_path: str):
+    """
+    Analyze a media file and get smart routing recommendations.
+    Returns detected language, recommended NAS, and category.
+    """
+    from app.services.media_service import SmartNASRouter
+    
+    path = Path(file_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+    
+    router_service = SmartNASRouter()
+    nas_configs = get_nas_configs()
+    
+    result = router_service.analyze_and_route(path, {n['name']: n for n in nas_configs})
+    
+    return {
+        "success": True,
+        "routing": result
+    }
+
+
+@router.get("/analyze/languages/{file_path:path}")
+async def detect_file_languages(file_path: str):
+    """Detect available audio languages in a media file."""
+    from app.services.media_service import AudioTrackFilter
+    
+    path = Path(file_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+    
+    audio_filter = AudioTrackFilter()
+    
+    if not audio_filter.check_mkvtoolnix_available():
+        raise HTTPException(status_code=503, detail="MKVToolNix not available")
+    
+    languages = audio_filter.detect_available_languages(path)
+    auto_selected = audio_filter.auto_select_language(path)
+    
+    return {
+        "file": file_path,
+        "available_languages": languages,
+        "auto_selected": auto_selected,
+        "priority_order": audio_filter.language_priority
     }
