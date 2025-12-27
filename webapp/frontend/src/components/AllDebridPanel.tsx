@@ -13,6 +13,7 @@ interface AllDebridDownloadResponse {
   success: boolean;
   message?: string;
   detail?: string;
+  job_id?: number;
 }
 
 interface NASLocation {
@@ -140,17 +141,56 @@ const AllDebridPanel: React.FC = () => {
         toast.success(data.message || 'Download started');
         window.addLog?.(`✅ ${data.message}`, 'success');
         setLinks('');
+        
+        // Poll for job status if job_id returned
+        if (data.job_id) {
+          pollJobStatus(data.job_id);
+        }
       } else {
         toast.error(data.detail || 'Download failed');
         window.addLog?.(`❌ ${data.detail}`, 'error');
+        setLoading(false);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       toast.error('Failed to start download');
       window.addLog?.(`❌ Error: ${errorMessage}`, 'error');
-    } finally {
       setLoading(false);
     }
+  };
+
+  const pollJobStatus = async (jobId: number): Promise<void> => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/v1/alldebrid/jobs/${jobId}`);
+        const data = await response.json();
+        const job = data.job;
+        
+        // Add new logs
+        if (job.logs && job.logs.length > 0) {
+          const lastLog = job.logs[job.logs.length - 1];
+          window.addLog?.(lastLog.message, lastLog.level);
+        }
+        
+        if (job.status === 'completed') {
+          clearInterval(pollInterval);
+          toast.success('Download completed!');
+          setLoading(false);
+        } else if (job.status === 'failed') {
+          clearInterval(pollInterval);
+          toast.error(job.error || 'Download failed');
+          setLoading(false);
+        }
+      } catch {
+        // Continue polling
+      }
+    }, 2000);
+    
+    // Stop polling after 30 minutes max
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      setLoading(false);
+    }, 30 * 60 * 1000);
   };
 
   const linkCount = parseLinks(links).length;

@@ -434,15 +434,105 @@ async def test_nas_connection(request: NASTestRequest):
 @router.get("/alldebrid/status")
 async def get_alldebrid_status():
     """Check if AllDebrid API key is configured"""
+    # Also check if aria2c is available
+    aria2c_available = False
+    try:
+        result = subprocess.run(['aria2c', '--version'], capture_output=True, timeout=5)
+        aria2c_available = result.returncode == 0
+    except:
+        pass
+    
     return {
-        "configured": bool(settings.alldebrid_api_key)
+        "configured": bool(settings.alldebrid_api_key),
+        "aria2c_available": aria2c_available
     }
+
+
+class NASDestination(BaseModel):
+    nas_name: str
+    category: str
 
 
 class AllDebridDownloadRequest(BaseModel):
     links: List[str]
+    language: str = "auto"
+    auto_detect_language: bool = True
+    download_only: bool = False
     output_path: Optional[str] = None
-    auto_route: bool = True  # Enable smart routing by default
+    nas_destination: Optional[NASDestination] = None
+
+
+# In-memory job tracking for AllDebrid downloads
+alldebrid_jobs: dict = {}
+job_counter = [0]
+
+
+def run_alldebrid_download_task(job_id: int, request: AllDebridDownloadRequest):
+    """Background task to run AllDebrid download."""
+    import sys
+    from pathlib import Path as PathLib
+    
+    # Add parent directory to path to import alldebrid_downloader
+    parent_dir = PathLib(__file__).parent.parent.parent.parent.parent
+    if str(parent_dir) not in sys.path:
+        sys.path.insert(0, str(parent_dir))
+    
+    job = alldebrid_jobs[job_id]
+    job['status'] = 'running'
+    job['logs'].append({'message': f'🚀 Starting download of {len(request.links)} links...', 'level': 'info'})
+    
+    try:
+        from alldebrid_downloader import AllDebridDownloader
+        
+        # Determine output path
+        if request.nas_destination:
+            # TODO: Mount NAS and get path
+            output_path = f"/tmp/alldebrid_downloads/{job_id}"
+        elif request.output_path:
+            output_path = request.output_path
+        else:
+            output_path = "/tmp/alldebrid_downloads"
+        
+        PathLib(output_path).mkdir(parents=True, exist_ok=True)
+        
+        def progress_callback(message: str, level: str = "info"):
+            job['logs'].append({'message': message, 'level': level})
+            # Parse progress
+            import re
+            percent_match = re.search(r'(\d+)%', message)
+            if percent_match:
+                job['progress'] = int(percent_match.group(1))
+        
+        downloader = AllDebridDownloader(
+            settings.alldebrid_api_key,
+            download_dir=output_path,
+            progress_callback=progress_callback
+        )
+        
+        language = request.language if not request.auto_detect_language else None
+        
+        if request.download_only:
+            downloaded = downloader.download_links(request.links)
+            job['logs'].append({'message': f'✅ Downloaded {len(downloaded)} files', 'level': 'success'})
+        else:
+            results = downloader.download_and_organize(
+                request.links, 
+                output_path, 
+                language or 'malayalam'
+            )
+            job['logs'].append({
+                'message': f"✅ Complete! Downloaded: {len(results.get('downloaded', []))}, Organized: {len(results.get('organized', []))}",
+                'level': 'success'
+            })
+        
+        job['status'] = 'completed'
+        job['progress'] = 100
+        
+    except Exception as e:
+        job['logs'].append({'message': f'❌ Error: {str(e)}', 'level': 'error'})
+        job['status'] = 'failed'
+        job['error'] = str(e)
+        logger.error(f"AllDebrid download error: {e}")
 
 
 @router.post("/alldebrid")
@@ -451,13 +541,58 @@ async def download_from_alldebrid(request: AllDebridDownloadRequest):
     if not settings.alldebrid_api_key:
         raise HTTPException(status_code=400, detail="AllDebrid API key not configured")
     
-    # TODO: Implement actual AllDebrid download logic
+    if not request.links:
+        raise HTTPException(status_code=400, detail="No links provided")
+    
+    # Create job
+    job_counter[0] += 1
+    job_id = job_counter[0]
+    
+    alldebrid_jobs[job_id] = {
+        'id': job_id,
+        'status': 'pending',
+        'progress': 0,
+        'links': request.links,
+        'logs': [],
+        'error': None
+    }
+    
+    # Start background thread
+    import threading
+    thread = threading.Thread(
+        target=run_alldebrid_download_task,
+        args=(job_id, request),
+        daemon=True
+    )
+    thread.start()
+    
     return {
         "success": True,
-        "message": f"Started download of {len(request.links)} links",
-        "links": request.links,
-        "auto_route": request.auto_route
+        "message": f"🚀 Download started! Job #{job_id} - {len(request.links)} links",
+        "job_id": job_id
     }
+
+
+@router.get("/alldebrid/jobs")
+async def get_alldebrid_jobs():
+    """Get all AllDebrid download jobs."""
+    return {"jobs": list(alldebrid_jobs.values())}
+
+
+@router.get("/alldebrid/jobs/{job_id}")
+async def get_alldebrid_job(job_id: int):
+    """Get a specific AllDebrid job status."""
+    if job_id not in alldebrid_jobs:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return {"job": alldebrid_jobs[job_id]}
+
+
+@router.get("/alldebrid/jobs/{job_id}/logs")
+async def get_alldebrid_job_logs(job_id: int):
+    """Get logs for a specific AllDebrid job."""
+    if job_id not in alldebrid_jobs:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return {"logs": alldebrid_jobs[job_id].get('logs', [])}
 
 
 # ============================================================================
