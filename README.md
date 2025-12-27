@@ -12,9 +12,14 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-**Organize movies, TV series & music for Plex/Jellyfin with IMDB/MusicBrainz integration, GPU video conversion, and professional audio enhancement.**
+**🎬 Organize movies, TV series & music for Plex, Jellyfin, Emby with IMDB/TMDB/MusicBrainz integration, GPU video conversion, NAS support, and professional audio enhancement.**
 
-[🚀 Quick Start](#-quick-start) • [✨ Features](#-features) • [🏗️ Architecture](#️-architecture) • [📦 Tech Stack](#-tech-stack) • [📖 Documentation](#-documentation)
+[🚀 Quick Start](#-quick-start) • [✨ Features](#-features) • [💻 Installation](#-installation) • [📦 Tech Stack](#-tech-stack) • [📖 Documentation](#-documentation)
+
+---
+
+### 🏷️ Keywords
+`plex` `jellyfin` `emby` `media-server` `media-organizer` `movie-renamer` `tv-series` `music-organizer` `nas` `synology` `unraid` `imdb` `tmdb` `musicbrainz` `ffmpeg` `hevc` `gpu-encoding` `audio-enhancement` `metadata` `file-organizer`
 
 </div>
 
@@ -22,11 +27,18 @@
 
 ## 🎯 What is Stellar?
 
-Stellar Media Organizer is an all-in-one solution for managing your media library. Whether you're downloading movies, TV series, or music - Stellar automatically organizes, enhances, and prepares everything for your media server.
+Stellar Media Organizer is an **all-in-one solution** for managing your media library. Whether you're downloading movies, TV series, or music - Stellar automatically organizes, enhances, and prepares everything for your **Plex**, **Jellyfin**, or **Emby** media server.
 
 ```
-🎬 Messy Downloads  →  ⭐ Stellar  →  📺 Perfect Plex Library
+🎬 Messy Downloads  →  ⭐ Stellar  →  📺 Perfect Media Library
 ```
+
+### 🎯 Perfect For:
+- 📺 **Plex** users who want perfectly named media
+- 🎬 **Jellyfin** enthusiasts with large libraries
+- 🎵 **Music collectors** who need proper metadata
+- 🖥️ **NAS owners** (Synology, Unraid, TrueNAS)
+- 🎮 **Home theater** builders
 
 ---
 
@@ -37,11 +49,12 @@ Stellar Media Organizer is an all-in-one solution for managing your media librar
 <td width="50%">
 
 ### 🎬 Video Organization
-- 🔍 **IMDB Integration** - Auto-lookup for accurate naming
+- 🔍 **IMDB/TMDB Integration** - Auto-lookup for accurate naming
 - 🎯 **Smart Detection** - Movies, TV series, anime
 - 🔊 **Audio Filtering** - Keep only your languages
 - ⚡ **GPU Conversion** - Hardware-accelerated HEVC
 - 📁 **Plex/Jellyfin Ready** - Perfect folder structure
+- 🌐 **NAS Support** - Direct transfer to Synology/Unraid
 
 </td>
 <td width="50%">
@@ -52,6 +65,7 @@ Stellar Media Organizer is an all-in-one solution for managing your media librar
 - 🎛️ **Audio Enhancement** - Professional FFmpeg presets
 - 📊 **EBU R128** - Broadcast-standard loudness
 - 🎧 **Format Options** - FLAC, MP3, M4A, Opus
+- 📂 **Plex Music Structure** - Artist/Album (Year)/Track
 
 </td>
 </tr>
@@ -70,156 +84,96 @@ Stellar Media Organizer is an all-in-one solution for managing your media librar
 
 ---
 
-## 📸 Screenshots
+## 💻 Installation
 
-<div align="center">
+### 📋 Prerequisites
 
-### 🎵 Music Enhancement Panel
-*Professional audio enhancement with multiple presets and format options*
+<details>
+<summary><b>🍎 macOS</b></summary>
 
-<img src="assets/screenshots/music-enhance-panel.png" alt="Music Enhancement Panel" width="800">
+```bash
+# Install Homebrew if not installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-### 📥 Music Download & Activity
-*Download from YouTube Music, Spotify, or AllDebrid with real-time progress*
+# Install dependencies
+brew install python@3.11 node ffmpeg mkvtoolnix
 
-<img src="assets/screenshots/music-download-activity.png" alt="Music Download Activity" width="800">
+# Install uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-### 📊 Job History & Live Logs
-*Track all your processing jobs with detailed activity logs*
+# Install pnpm
+npm install -g pnpm
+```
+</details>
 
-<img src="assets/screenshots/job-history-logs.png" alt="Job History and Logs" width="800">
+<details>
+<summary><b>🪟 Windows</b></summary>
 
-</div>
+```powershell
+# Install Chocolatey if not installed (Run as Administrator)
+Set-ExecutionPolicy Bypass -Scope Process -Force
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Install dependencies
+choco install python311 nodejs ffmpeg mkvtoolnix -y
+
+# Install uv (Python package manager)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Install pnpm
+npm install -g pnpm
+
+# Restart terminal after installation
+```
+
+**Alternative: Manual Installation**
+1. [Python 3.11+](https://www.python.org/downloads/)
+2. [Node.js 18+](https://nodejs.org/)
+3. [FFmpeg](https://ffmpeg.org/download.html) - Add to PATH
+4. [MKVToolNix](https://mkvtoolnix.download/downloads.html)
+</details>
+
+<details>
+<summary><b>🐧 Linux (Ubuntu/Debian)</b></summary>
+
+```bash
+# Update package list
+sudo apt update
+
+# Install dependencies
+sudo apt install python3.11 python3.11-venv nodejs npm ffmpeg mkvtoolnix -y
+
+# Install uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install pnpm
+npm install -g pnpm
+```
+</details>
 
 ---
 
-## 🏗️ Architecture
-
-```mermaid
-flowchart TB
-    subgraph Client["🖥️ Client Layer"]
-        UI["⚛️ React Frontend<br/>Port 5173"]
-    end
-
-    subgraph API["🔌 API Layer"]
-        Backend["⚡ FastAPI Backend<br/>Port 8000"]
-        GPU["🎮 GPU Service<br/>Port 8888"]
-    end
-
-    subgraph Services["⚙️ Service Layer"]
-        VideoOrg["🎬 Video Organizer"]
-        MusicOrg["🎵 Music Organizer"]
-        Downloader["📥 Multi-Source Downloader"]
-    end
-
-    subgraph External["🌐 External APIs"]
-        IMDB["🎬 IMDB/OMDb"]
-        MusicBrainz["🎵 MusicBrainz"]
-        YouTube["📺 YouTube Music"]
-        Spotify["💚 Spotify"]
-        AllDebrid["☁️ AllDebrid"]
-    end
-
-    subgraph Tools["🛠️ Processing Tools"]
-        FFmpeg["🎞️ FFmpeg"]
-        MKVToolNix["📦 MKVToolNix"]
-        YtDlp["⬇️ yt-dlp"]
-        SpotDL["🎵 spotdl"]
-    end
-
-    subgraph Output["📂 Output"]
-        Plex["📺 Plex Library"]
-        Jellyfin["🎬 Jellyfin Library"]
-    end
-
-    UI <--> Backend
-    Backend <--> GPU
-    Backend --> VideoOrg
-    Backend --> MusicOrg
-    Backend --> Downloader
-
-    VideoOrg --> IMDB
-    MusicOrg --> MusicBrainz
-    Downloader --> YouTube
-    Downloader --> Spotify
-    Downloader --> AllDebrid
-
-    VideoOrg --> FFmpeg
-    VideoOrg --> MKVToolNix
-    MusicOrg --> FFmpeg
-    Downloader --> YtDlp
-    Downloader --> SpotDL
-
-    VideoOrg --> Plex
-    MusicOrg --> Jellyfin
-
-    style UI fill:#61DAFB,color:#000
-    style Backend fill:#009688,color:#fff
-    style GPU fill:#76B900,color:#fff
-    style IMDB fill:#F5C518,color:#000
-    style MusicBrainz fill:#BA478F,color:#fff
-    style YouTube fill:#FF0000,color:#fff
-    style Spotify fill:#1DB954,color:#fff
-```
-
-### 📊 Data Flow
-
-```mermaid
-sequenceDiagram
-    participant U as 👤 User
-    participant F as ⚛️ Frontend
-    participant B as ⚡ Backend
-    participant D as 📥 Downloader
-    participant P as 🎛️ Processor
-    participant O as 📂 Output
-
-    U->>F: Paste URLs / Upload Files
-    F->>B: POST /api/v1/music/download
-    B->>B: Create Job 📋
-    B-->>F: Job ID + Status
-    
-    B->>D: Download from Source
-    D->>D: yt-dlp / spotdl / AllDebrid
-    D-->>B: Raw Files 📁
-    
-    B->>P: Process & Enhance
-    P->>P: MusicBrainz Lookup 🔍
-    P->>P: FFmpeg Enhancement 🎛️
-    P-->>B: Enhanced Files ✨
-    
-    B->>O: Organize to Library
-    O-->>B: Complete ✅
-    B-->>F: Job Complete
-    F-->>U: Success! 🎉
-```
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
+### 🚀 Quick Start
 
 ```bash
-# macOS
-brew install python node ffmpeg mkvtoolnix
+# 1️⃣ Clone the repository
+git clone https://github.com/sharvinzlife/Stellar-Media-Organizer.git
+cd Stellar-Media-Organizer
 
-# Ubuntu/Debian
-sudo apt install python3 nodejs npm ffmpeg mkvtoolnix
-```
+# 2️⃣ Run setup script (creates venv, installs dependencies)
+make setup
+# OR manually:
+# chmod +x scripts/setup-dev.sh && ./scripts/setup-dev.sh
 
-### Installation
-
-```bash
-# 1️⃣ Clone the repo
-git clone https://github.com/yourusername/stellar-media-organizer.git
-cd stellar-media-organizer
-
-# 2️⃣ Configure environment
+# 3️⃣ Configure environment
 cp config.env.example config.env
-# Edit config.env with your API keys and paths
+# Edit config.env with your API keys and NAS settings
 
-# 3️⃣ Start all services
+# 4️⃣ Start all services
 ./start.sh
+# OR on Windows:
+# start.bat
 ```
 
 ### 🌐 Open in Browser
@@ -232,19 +186,67 @@ http://localhost:5173
 
 ## ⚙️ Configuration
 
-Edit `config.env`:
+Edit `config.env` with your settings:
 
 ```bash
 # 📂 Output Directories
-MEDIA_PATH=/path/to/processed/videos
-MUSIC_OUTPUT_PATH=/path/to/music
+MEDIA_PATH=~/Documents/Processed
+MUSIC_OUTPUT_PATH=~/Music
 
-# 🔑 API Keys
+# 🔑 API Keys (Required)
 ALLDEBRID_API_KEY=your_key_here
+OMDB_API_KEY=your_key_here        # Get free: http://www.omdbapi.com/apikey.aspx
 
-# 🎵 MusicBrainz (optional - higher rate limits)
-MUSICBRAINZ_CLIENT_ID=
-MUSICBRAINZ_CLIENT_SECRET=
+# 🎬 TMDB (Optional - for episode titles)
+TMDB_ACCESS_TOKEN=your_token_here  # Get: https://www.themoviedb.org/settings/api
+
+# 🌐 NAS Configuration (Optional)
+# Synology NAS
+LHARMONY_HOST=10.1.0.122
+LHARMONY_USERNAME=your_username
+LHARMONY_PASSWORD='your_password'  # Use single quotes for special chars
+LHARMONY_SHARE=data
+LHARMONY_MEDIA_PATH=/media
+
+# Unraid NAS
+STREAMWAVE_HOST=10.1.0.105
+STREAMWAVE_USERNAME=your_username
+STREAMWAVE_PASSWORD='your_password'
+STREAMWAVE_SHARE=Data-Streamwave
+STREAMWAVE_MEDIA_PATH=/media
+```
+
+See [config.env.example](config.env.example) for all options.
+
+---
+
+## 🖥️ Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| ⚛️ Frontend | `5173` | React web UI |
+| ⚡ Backend | `8000` | FastAPI server |
+| 🎮 GPU | `8888` | Video conversion |
+
+---
+
+## 💻 CLI Usage
+
+```bash
+# 🎬 Organize video files
+python media_organizer.py organize /path/to/media
+
+# 🔊 Filter audio tracks by language
+python media_organizer.py filter /path/to/media --language malayalam
+
+# 🎵 Organize music with enhancement
+python music_organizer.py /path/to/music \
+  --output /path/to/output \
+  --preset optimal \
+  --format flac
+
+# 📥 Download music from URL
+python music_downloader.py "https://open.spotify.com/playlist/..."
 ```
 
 ---
@@ -293,65 +295,11 @@ MUSICBRAINZ_CLIENT_SECRET=
 </tr>
 </table>
 
-### Full Stack Details
-
-| Layer | Technology | Version |
-|-------|------------|---------|
-| 🐍 Runtime | Python | 3.10+ |
-| ⚡ API Framework | FastAPI | 0.115+ |
-| 🔄 ASGI Server | Uvicorn | Latest |
-| ✅ Validation | Pydantic | 2.x |
-| ⚛️ UI Framework | React | 18 |
-| 📦 Build Tool | Vite | 6 |
-| 🎨 CSS Framework | TailwindCSS | 3.x |
-| 🧩 UI Components | DaisyUI | 5.x |
-| 🎞️ Video Processing | FFmpeg | Latest |
-| 📦 MKV Tools | MKVToolNix | Latest |
-| ⬇️ YouTube | yt-dlp | Latest |
-| 🎵 Spotify | spotdl | Latest |
-| 🐳 Containers | Docker | Latest |
-
----
-
-## 🖥️ Services
-
-| Service | Port | Description |
-|---------|------|-------------|
-| ⚛️ Frontend | `5173` | React web UI |
-| ⚡ Backend | `8000` | FastAPI server |
-| 🎮 GPU | `8888` | Video conversion |
-
----
-
-## 💻 CLI Usage
-
-```bash
-# 🎬 Organize video files
-python media_organizer.py organize /path/to/media
-
-# 🔊 Filter audio tracks
-python media_organizer.py filter /path/to/media --language malayalam
-
-# 🎵 Organize music with enhancement
-python music_organizer.py /path/to/music \
-  --output /path/to/output \
-  --preset optimal \
-  --format flac
-```
-
----
-
-## 📖 Documentation
-
-- [🏗️ Project Structure](.kiro/steering/structure.md)
-- [🛠️ Tech Stack Details](.kiro/steering/tech.md)
-- [📋 Product Features](.kiro/steering/product.md)
-
 ---
 
 ## 📝 Changelog
 
-### v3.0.0 - *NAS Integration & UI Overhaul* 🚀 (December 2024)
+### v3.0.0 - *NAS Integration & UI Overhaul* 🚀 (December 2025)
 
 #### 🌐 NAS Integration
 - 🔗 **SMB/NAS Support** - Direct transfer to Synology (Lharmony) & Unraid (Streamwave)
@@ -373,7 +321,22 @@ python music_organizer.py /path/to/music \
 - 🎯 **OMDb Primary** - OMDb as primary metadata source, TMDB secondary
 - 📦 **Smart Renamer** - AllDebrid integration with metadata lookup
 
-### v2.0.0 - *Stellar Release* ⭐ (December 2024)
+### v2.0.0 - *Stellar Release* ⭐ (December 2025)
+
+- 🎵 Multi-source music download (YouTube, Spotify, AllDebrid)
+- 🎛️ Professional audio enhancement with 6 presets
+- 🎬 IMDB integration for accurate naming
+- ⚡ GPU-accelerated video conversion
+- 🌌 Space-themed glassmorphism UI
+
+---
+
+## 📖 Documentation
+
+- [🏗️ Project Structure](.kiro/steering/structure.md)
+- [🛠️ Tech Stack Details](.kiro/steering/tech.md)
+- [📋 Product Features](.kiro/steering/product.md)
+- [🌐 NAS Integration](NAS_INTEGRATION.md)
 
 ---
 
@@ -391,8 +354,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**Made with ❤️ for media enthusiasts**
+**Made with ❤️ by [sharvinzlife](https://github.com/sharvinzlife)**
 
 ⭐ Star this repo if you find it useful!
+
+[![GitHub](https://img.shields.io/badge/-GitHub-181717?style=flat-square&logo=github)](https://github.com/sharvinzlife)
+[![Instagram](https://img.shields.io/badge/-Instagram-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://instagram.com/sharvinzlife)
+[![Twitter](https://img.shields.io/badge/-Twitter-1DA1F2?style=flat-square&logo=twitter&logoColor=white)](https://x.com/sharvinzlife)
 
 </div>

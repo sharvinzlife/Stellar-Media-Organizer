@@ -184,13 +184,29 @@ class MusicDownloader:
             logger.info(message)
         self.progress_callback(message, level)
     
-    def _get_venv_bin_path(self) -> Path:
-        """Get the path to the virtual environment bin directory"""
+    def _get_venv_bin_paths(self) -> List[Path]:
+        """Get possible paths to virtual environment bin directories"""
         import sys
-        # Get the directory containing the Python executable
+        paths = []
+        
+        # 1. Current Python executable's directory (if running in venv)
         python_path = Path(sys.executable)
-        # The bin directory is the parent of the python executable
-        return python_path.parent
+        paths.append(python_path.parent)
+        
+        # 2. Project's .venv directory (relative to this file)
+        project_root = Path(__file__).parent
+        venv_bin = project_root / '.venv' / 'bin'
+        if venv_bin.exists():
+            paths.append(venv_bin)
+        
+        # 3. Check VIRTUAL_ENV environment variable
+        virtual_env = os.environ.get('VIRTUAL_ENV')
+        if virtual_env:
+            venv_path = Path(virtual_env) / 'bin'
+            if venv_path.exists():
+                paths.append(venv_path)
+        
+        return paths
     
     def _check_tools(self):
         """Check if required tools are installed"""
@@ -200,39 +216,53 @@ class MusicDownloader:
             "ffmpeg": False,
         }
         
-        # Get venv bin path for checking tools installed in venv
-        venv_bin = self._get_venv_bin_path()
+        # Get all possible venv bin paths
+        venv_bins = self._get_venv_bin_paths()
         
-        # Check yt-dlp (try venv first, then system)
-        yt_dlp_paths = [
-            venv_bin / 'yt-dlp',
-            'yt-dlp'  # System PATH
-        ]
+        # Build list of paths to check for each tool
+        yt_dlp_paths = []
+        spotdl_paths = []
+        for venv_bin in venv_bins:
+            yt_dlp_paths.append(venv_bin / 'yt-dlp')
+            spotdl_paths.append(venv_bin / 'spotdl')
+        # Add system PATH as fallback
+        yt_dlp_paths.append(Path('yt-dlp'))
+        spotdl_paths.append(Path('spotdl'))
+        
+        # Check yt-dlp
         for yt_dlp_path in yt_dlp_paths:
             try:
-                subprocess.run([str(yt_dlp_path), '--version'], capture_output=True, check=True)
+                result = subprocess.run(
+                    [str(yt_dlp_path), '--version'], 
+                    capture_output=True, 
+                    check=True,
+                    timeout=10
+                )
                 self.tools_available["yt-dlp"] = True
                 self._yt_dlp_path = str(yt_dlp_path)
+                logger.info(f"✅ Found yt-dlp at: {yt_dlp_path}")
                 break
-            except (subprocess.CalledProcessError, FileNotFoundError):
+            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                 continue
         
         if not self.tools_available["yt-dlp"]:
             self._log("⚠️ yt-dlp not found. Install with: uv pip install yt-dlp", "warning")
             self._yt_dlp_path = 'yt-dlp'
         
-        # Check spotdl (try venv first, then system)
-        spotdl_paths = [
-            venv_bin / 'spotdl',
-            'spotdl'  # System PATH
-        ]
+        # Check spotdl
         for spotdl_path in spotdl_paths:
             try:
-                subprocess.run([str(spotdl_path), '--version'], capture_output=True, check=True)
+                result = subprocess.run(
+                    [str(spotdl_path), '--version'], 
+                    capture_output=True, 
+                    check=True,
+                    timeout=10
+                )
                 self.tools_available["spotdl"] = True
                 self._spotdl_path = str(spotdl_path)
+                logger.info(f"✅ Found spotdl at: {spotdl_path}")
                 break
-            except (subprocess.CalledProcessError, FileNotFoundError):
+            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                 continue
         
         if not self.tools_available["spotdl"]:
@@ -241,9 +271,9 @@ class MusicDownloader:
         
         # Check ffmpeg (system tool)
         try:
-            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+            subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True, timeout=10)
             self.tools_available["ffmpeg"] = True
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             self._log("⚠️ ffmpeg not found. Install with: brew install ffmpeg", "warning")
     
     def detect_source(self, url: str) -> DownloadSource:

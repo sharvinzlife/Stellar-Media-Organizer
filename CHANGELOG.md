@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.0.0] - 2024-12-26 🚀
+## [3.0.0] - 2025-12-26 🚀
 
 ### 🌐 NAS Integration
 - **SMB/NAS Support** - Direct file transfer to Synology (Lharmony) & Unraid (Streamwave) NAS devices
@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Primary Destination** - NAS is now the default destination in both Video and Music panels
 
 ### ✨ UI/UX Enhancements
+- **Retro TV Footer** - Awesome CRT-style TV with glitchy screen displaying "STELLAR MEDIA"
 - **Glitchy Animations** - Cyberpunk-inspired header with random glitch bursts and rotating rings
 - **Footer Redesign** - New glitchy footer with social links, features, and floating particles
 - **Download Animation** - Green sparkling effects during file transfers
@@ -27,21 +28,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Page Loading Bar** - Enhanced gradient glow loading indicator
 
 ### 🔧 Technical Improvements
-- **spotdl Fix** - Proper virtual environment detection for Spotify downloads
+- **spotdl Fix** - Proper virtual environment detection for Spotify downloads (checks .venv/bin)
 - **TMDB Client** - New robust client with caching, retry logic, and rate limiting
 - **OMDb Integration** - OMDb as PRIMARY metadata source, TMDB as secondary for episode titles
 - **Smart Renamer** - AllDebrid integration with automatic metadata lookup
 - **Metadata Client** - Unified metadata fetching from multiple sources
+- **Windows Support** - Added installation instructions and start.bat for Windows users
 
 ### 🐛 Bug Fixes
-- Fixed spotdl showing red in UI (venv path detection)
+- Fixed spotdl showing red in UI (venv path detection now checks multiple locations)
 - Fixed NAS storage not showing on initial page load
 - Fixed Lharmony folder names (tv, malayalam tv shows)
 - Fixed config.env password escaping with single quotes
 
 ---
 
-## [2.0.0] - 2024-12-20 ⭐
+## [2.0.0] - 2025-12-20 ⭐
 
 ### 🎵 Music Features
 - **Multi-source Download** - YouTube Music, Spotify, AllDebrid support
@@ -70,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2024-11-01 🎉
+## [1.0.0] - 2025-11-01 🎉
 
 ### Initial Release
 - Basic video file organization
@@ -81,6 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[3.0.0]: https://github.com/sharvinzlife/stellar-media-organizer/compare/v2.0.0...v3.0.0
-[2.0.0]: https://github.com/sharvinzlife/stellar-media-organizer/compare/v1.0.0...v2.0.0
-[1.0.0]: https://github.com/sharvinzlife/stellar-media-organizer/releases/tag/v1.0.0
+[3.0.0]: https://github.com/sharvinzlife/Stellar-Media-Organizer/compare/v2.0.0...v3.0.0
+[2.0.0]: https://github.com/sharvinzlife/Stellar-Media-Organizer/compare/v1.0.0...v2.0.0
+[1.0.0]: https://github.com/sharvinzlife/Stellar-Media-Organizer/releases/tag/v1.0.0
