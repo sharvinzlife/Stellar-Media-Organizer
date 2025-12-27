@@ -35,6 +35,22 @@ try:
 except ImportError:
     MUSICBRAINZ_AVAILABLE = False
 
+# AI Metadata Extraction
+try:
+    from core.ai_metadata_extractor import AIMetadataExtractor, MusicMetadata as AIMusicMetadata
+    AI_EXTRACTION_AVAILABLE = True
+except ImportError:
+    AI_EXTRACTION_AVAILABLE = False
+    AIMetadataExtractor = None
+
+# Discogs API
+try:
+    from core.discogs_lookup import DiscogsClient, lookup_track as discogs_lookup_track
+    DISCOGS_AVAILABLE = True
+except ImportError:
+    DISCOGS_AVAILABLE = False
+    DiscogsClient = None
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -505,10 +521,17 @@ class MusicLibraryOrganizer:
         self,
         musicbrainz_client_id: str = "",
         musicbrainz_client_secret: str = "",
-        use_musicbrainz: bool = True
+        use_musicbrainz: bool = True,
+        use_ai_extraction: bool = True,
+        use_discogs: bool = True,
+        discogs_api_token: str = ""
     ):
         self.use_musicbrainz = use_musicbrainz and MUSICBRAINZ_AVAILABLE
+        self.use_ai_extraction = use_ai_extraction and AI_EXTRACTION_AVAILABLE
+        self.use_discogs = use_discogs and DISCOGS_AVAILABLE
         self.mb_client = None
+        self.ai_extractor = None
+        self.discogs_client = None
         
         if self.use_musicbrainz:
             try:
@@ -516,6 +539,27 @@ class MusicLibraryOrganizer:
             except ImportError:
                 logger.warning("MusicBrainz not available, using embedded metadata only")
                 self.use_musicbrainz = False
+        
+        if self.use_ai_extraction:
+            try:
+                self.ai_extractor = AIMetadataExtractor()
+                logger.info("✅ AI metadata extraction enabled")
+            except Exception as e:
+                logger.warning(f"AI extraction not available: {e}")
+                self.use_ai_extraction = False
+        
+        if self.use_discogs:
+            try:
+                token = discogs_api_token or os.getenv("DISCOGS_API_TOKEN", "")
+                if token:
+                    self.discogs_client = DiscogsClient(token)
+                    logger.info("✅ Discogs metadata lookup enabled")
+                else:
+                    self.use_discogs = False
+                    logger.info("Discogs API token not configured")
+            except Exception as e:
+                logger.warning(f"Discogs not available: {e}")
+                self.use_discogs = False
         
         self.enhancer = AudioEnhancer()
     
@@ -529,6 +573,30 @@ class MusicLibraryOrganizer:
         name = re.sub(r'\s+', ' ', name).strip()
         # Limit length
         return name[:200] if len(name) > 200 else name
+    
+    def _extract_metadata_from_filename(self, file_path: str) -> Optional[MusicMetadata]:
+        """Extract metadata from filename using AI extraction."""
+        if not self.use_ai_extraction or not self.ai_extractor:
+            return None
+        
+        try:
+            filename = Path(file_path).name
+            ai_result = self.ai_extractor.extract_music_metadata(filename, use_ai_fallback=True)
+            
+            if ai_result and ai_result.confidence >= 0.7:
+                metadata = MusicMetadata()
+                metadata.title = ai_result.title or ""
+                metadata.artist = ai_result.artist or ""
+                metadata.album = ai_result.album or ""
+                metadata.track_number = ai_result.track_number or 0
+                metadata.year = str(ai_result.year) if ai_result.year else ""
+                metadata.genre = ai_result.genre or ""
+                logger.debug(f"AI extracted from filename: {ai_result.artist} - {ai_result.title}")
+                return metadata
+        except Exception as e:
+            logger.debug(f"AI filename extraction failed: {e}")
+        
+        return None
     
     def _read_embedded_metadata(self, file_path: str) -> MusicMetadata:
         """Read metadata from audio file tags"""
@@ -574,6 +642,23 @@ class MusicLibraryOrganizer:
             
         except Exception as e:
             logger.warning(f"Error reading metadata from {file_path}: {e}")
+        
+        # If embedded metadata is missing key fields, try AI extraction from filename
+        if not metadata.title or not metadata.artist:
+            ai_metadata = self._extract_metadata_from_filename(file_path)
+            if ai_metadata:
+                # Fill in missing fields from AI extraction
+                if not metadata.title and ai_metadata.title:
+                    metadata.title = ai_metadata.title
+                if not metadata.artist and ai_metadata.artist:
+                    metadata.artist = ai_metadata.artist
+                if not metadata.album and ai_metadata.album:
+                    metadata.album = ai_metadata.album
+                if not metadata.track_number and ai_metadata.track_number:
+                    metadata.track_number = ai_metadata.track_number
+                if not metadata.year and ai_metadata.year:
+                    metadata.year = ai_metadata.year
+                logger.info(f"Filled missing metadata from filename: {metadata.artist} - {metadata.title}")
         
         return metadata
     
@@ -623,38 +708,64 @@ class MusicLibraryOrganizer:
             return False
     
     def _lookup_metadata(self, file_path: str, existing: MusicMetadata) -> MusicMetadata:
-        """Enhance metadata using MusicBrainz lookup"""
-        if not self.use_musicbrainz or not self.mb_client:
-            return existing
-        
+        """Enhance metadata using MusicBrainz lookup, with Discogs fallback"""
         # Only lookup if we have at least a title
         if not existing.title:
             return existing
         
-        mb_metadata = self.mb_client.lookup_metadata(
-            title=existing.title,
-            artist=existing.artist,
-            album=existing.album
-        )
+        # Try MusicBrainz first
+        if self.use_musicbrainz and self.mb_client:
+            mb_metadata = self.mb_client.lookup_metadata(
+                title=existing.title,
+                artist=existing.artist,
+                album=existing.album
+            )
+            
+            if mb_metadata:
+                # Merge: prefer MusicBrainz data but keep existing if MB is empty
+                if mb_metadata.title:
+                    existing.title = mb_metadata.title
+                if mb_metadata.artist:
+                    existing.artist = mb_metadata.artist
+                if mb_metadata.album:
+                    existing.album = mb_metadata.album
+                if mb_metadata.year:
+                    existing.year = mb_metadata.year
+                if mb_metadata.track_number:
+                    existing.track_number = mb_metadata.track_number
+                if mb_metadata.musicbrainz_recording_id:
+                    existing.musicbrainz_recording_id = mb_metadata.musicbrainz_recording_id
+                if mb_metadata.musicbrainz_release_id:
+                    existing.musicbrainz_release_id = mb_metadata.musicbrainz_release_id
+                if mb_metadata.musicbrainz_artist_id:
+                    existing.musicbrainz_artist_id = mb_metadata.musicbrainz_artist_id
+                return existing
         
-        if mb_metadata:
-            # Merge: prefer MusicBrainz data but keep existing if MB is empty
-            if mb_metadata.title:
-                existing.title = mb_metadata.title
-            if mb_metadata.artist:
-                existing.artist = mb_metadata.artist
-            if mb_metadata.album:
-                existing.album = mb_metadata.album
-            if mb_metadata.year:
-                existing.year = mb_metadata.year
-            if mb_metadata.track_number:
-                existing.track_number = mb_metadata.track_number
-            if mb_metadata.musicbrainz_recording_id:
-                existing.musicbrainz_recording_id = mb_metadata.musicbrainz_recording_id
-            if mb_metadata.musicbrainz_release_id:
-                existing.musicbrainz_release_id = mb_metadata.musicbrainz_release_id
-            if mb_metadata.musicbrainz_artist_id:
-                existing.musicbrainz_artist_id = mb_metadata.musicbrainz_artist_id
+        # Fallback to Discogs if MusicBrainz didn't find anything
+        if self.use_discogs and self.discogs_client:
+            try:
+                discogs_track = self.discogs_client.search_track(
+                    title=existing.title,
+                    artist=existing.artist
+                )
+                
+                if discogs_track:
+                    logger.info(f"Discogs found: {discogs_track.artist} - {discogs_track.title}")
+                    # Merge Discogs data
+                    if discogs_track.title:
+                        existing.title = discogs_track.title
+                    if discogs_track.artist:
+                        existing.artist = discogs_track.artist
+                    if discogs_track.album:
+                        existing.album = discogs_track.album
+                    if discogs_track.year:
+                        existing.year = str(discogs_track.year)
+                    if discogs_track.track_number:
+                        existing.track_number = discogs_track.track_number
+                    if discogs_track.genre:
+                        existing.genre = discogs_track.genre
+            except Exception as e:
+                logger.debug(f"Discogs lookup failed: {e}")
         
         return existing
     

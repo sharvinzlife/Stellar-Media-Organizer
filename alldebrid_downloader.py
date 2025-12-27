@@ -2,7 +2,13 @@
 """
 AllDebrid Downloader
 Downloads files from AllDebrid links using aria2c for multi-threaded downloads.
-Automatically organizes and filters audio tracks.
+Automatically organizes and renames using TMDB metadata.
+
+Features:
+- Multi-threaded downloads via aria2c
+- TMDB integration for accurate naming
+- Plex/Jellyfin compatible folder structure
+- Audio track filtering by language
 """
 
 import os
@@ -19,16 +25,53 @@ logger = logging.getLogger(__name__)
 # AllDebrid API
 ALLDEBRID_API_BASE = "https://api.alldebrid.com/v4"
 
+# TMDB Integration
+try:
+    from core.tmdb_client import TMDBClient, get_tmdb_client
+    from core.smart_renamer import SmartRenamer, FilenameParser, MediaType
+    TMDB_AVAILABLE = True
+except ImportError:
+    TMDB_AVAILABLE = False
+    logger.warning("TMDB integration not available. Install with: pip install requests")
+
 
 class AllDebridDownloader:
-    """Downloads and organizes files from AllDebrid."""
+    """Downloads and organizes files from AllDebrid with TMDB integration."""
     
-    def __init__(self, api_key: str, download_dir: str = "/Users/sharvin/Downloads/AllDebrid",
-                 progress_callback: Optional[Callable[[str, str], None]] = None):
+    def __init__(
+        self,
+        api_key: str,
+        download_dir: str = "/Users/sharvin/Downloads/AllDebrid",
+        tmdb_token: Optional[str] = None,
+        tmdb_api_key: Optional[str] = None,
+        progress_callback: Optional[Callable[[str, str], None]] = None
+    ):
         self.api_key = api_key
         self.download_dir = Path(download_dir)
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.progress_callback = progress_callback or (lambda msg, level: None)
+        
+        # Initialize TMDB client
+        self.tmdb_client: Optional[TMDBClient] = None
+        self.smart_renamer: Optional[SmartRenamer] = None
+        
+        if TMDB_AVAILABLE:
+            tmdb_token = tmdb_token or os.getenv("TMDB_ACCESS_TOKEN")
+            tmdb_api_key = tmdb_api_key or os.getenv("TMDB_API_KEY")
+            
+            if tmdb_token or tmdb_api_key:
+                self.tmdb_client = TMDBClient(
+                    access_token=tmdb_token,
+                    api_key=tmdb_api_key
+                )
+                self.smart_renamer = SmartRenamer(
+                    tmdb_client=self.tmdb_client,
+                    organize_folders=True,
+                    include_episode_title=True
+                )
+                self._log("✅ TMDB integration enabled")
+            else:
+                self._log("⚠️ TMDB credentials not found. Set TMDB_ACCESS_TOKEN or TMDB_API_KEY", "warning")
         
         # Check aria2c is available
         if not self._check_aria2():
@@ -179,6 +222,124 @@ class AllDebridDownloader:
         
         return downloaded_files
     
+    def smart_rename_file(self, file_path: Path, output_dir: Path) -> Optional[Path]:
+        """
+        Rename a file using TMDB metadata.
+        
+        Args:
+            file_path: Path to the downloaded file
+            output_dir: Output directory for organized files
+            
+        Returns:
+            New path if renamed, original path if TMDB unavailable, None on error
+        """
+        if not self.smart_renamer:
+            self._log("⚠️ TMDB not configured, skipping smart rename", "warning")
+            return file_path
+        
+        self._log(f"🔍 Looking up metadata for: {file_path.name}")
+        
+        result = self.smart_renamer.rename_file(file_path, output_dir, dry_run=False)
+        
+        if result.success and result.new_path:
+            if result.new_name and result.original_name != result.new_name:
+                self._log(f"   ✅ Renamed: {result.new_name}")
+                if result.tmdb_title:
+                    self._log(f"   📺 TMDB: {result.tmdb_title} (ID: {result.tmdb_id})")
+            else:
+                self._log(f"   ℹ️ Already correctly named")
+            return result.new_path
+        else:
+            self._log(f"   ⚠️ Rename failed: {result.error}", "warning")
+            return file_path
+    
+    def download_and_organize_smart(
+        self,
+        links: List[str],
+        output_dir: str = "/Users/sharvin/Documents/Processed",
+        language: Optional[str] = None,
+        filter_audio: bool = False
+    ) -> Dict:
+        """
+        Download links and organize using TMDB metadata.
+        
+        Args:
+            links: List of AllDebrid links
+            output_dir: Output directory for organized files
+            language: Audio language to keep (if filter_audio is True)
+            filter_audio: Whether to filter audio tracks
+            
+        Returns:
+            Dict with download/organize results
+        """
+        results = {
+            "downloaded": [],
+            "renamed": [],
+            "filtered": [],
+            "errors": []
+        }
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Step 1: Download all files
+        self._log("=" * 50)
+        self._log("📥 STEP 1: Downloading files from AllDebrid")
+        self._log("=" * 50)
+        
+        downloaded_files = self.download_links(links)
+        results["downloaded"] = [str(f) for f in downloaded_files]
+        
+        if not downloaded_files:
+            self._log("❌ No files downloaded!", "error")
+            return results
+        
+        # Step 2: Smart rename using TMDB
+        self._log("=" * 50)
+        self._log("🎬 STEP 2: Renaming with TMDB metadata")
+        self._log("=" * 50)
+        
+        renamed_files = []
+        for file_path in downloaded_files:
+            new_path = self.smart_rename_file(file_path, output_path)
+            if new_path:
+                renamed_files.append(new_path)
+                results["renamed"].append(str(new_path))
+            else:
+                results["errors"].append(f"Failed to rename: {file_path.name}")
+        
+        # Step 3: Filter audio tracks (optional)
+        if filter_audio and language:
+            self._log("=" * 50)
+            self._log(f"🎵 STEP 3: Filtering audio (keeping {language})")
+            self._log("=" * 50)
+            
+            try:
+                from media_organizer import AudioTrackFilter
+                audio_filter = AudioTrackFilter()
+                
+                for file_path in renamed_files:
+                    if file_path.suffix.lower() == '.mkv':
+                        filtered = audio_filter.filter_audio(file_path, language)
+                        if filtered:
+                            results["filtered"].append(str(file_path))
+                            self._log(f"   ✅ Filtered: {file_path.name}")
+            except ImportError:
+                self._log("⚠️ Audio filtering not available", "warning")
+        
+        # Summary
+        self._log("=" * 50)
+        self._log("🎉 COMPLETE!", "success")
+        self._log(f"   Downloaded: {len(results['downloaded'])} files")
+        self._log(f"   Renamed: {len(results['renamed'])} files")
+        if filter_audio:
+            self._log(f"   Filtered: {len(results['filtered'])} files")
+        if results['errors']:
+            self._log(f"   Errors: {len(results['errors'])}", "warning")
+        self._log("=" * 50)
+        
+        return results
+    
     def download_and_organize(self, links: List[str], output_dir: str = "/Users/sharvin/Documents/Processed",
                                language: str = "malayalam") -> Dict:
         """Download links, organize files, and filter audio."""
@@ -247,12 +408,15 @@ def parse_links(text: str) -> List[str]:
 def main():
     import argparse
     
-    parser = argparse.ArgumentParser(description="AllDebrid Downloader with Media Organization")
+    parser = argparse.ArgumentParser(description="AllDebrid Downloader with TMDB Integration")
     parser.add_argument('links', nargs='?', help='AllDebrid links (space or newline separated)')
     parser.add_argument('--api-key', '-k', help='AllDebrid API key (or set ALLDEBRID_API_KEY env var)')
+    parser.add_argument('--tmdb-token', '-t', help='TMDB access token (or set TMDB_ACCESS_TOKEN env var)')
     parser.add_argument('--output', '-o', default='/Users/sharvin/Documents/Processed', help='Output directory')
-    parser.add_argument('--language', '-l', default='malayalam', help='Audio language to keep')
-    parser.add_argument('--download-only', action='store_true', help='Only download, skip organize/filter')
+    parser.add_argument('--language', '-l', default='english', help='Audio language to keep')
+    parser.add_argument('--filter-audio', '-f', action='store_true', help='Filter audio tracks by language')
+    parser.add_argument('--download-only', action='store_true', help='Only download, skip organize/rename')
+    parser.add_argument('--legacy', action='store_true', help='Use legacy organize method (no TMDB)')
     
     args = parser.parse_args()
     
@@ -261,6 +425,9 @@ def main():
         print("❌ AllDebrid API key required!")
         print("   Set ALLDEBRID_API_KEY environment variable or use --api-key")
         return 1
+    
+    tmdb_token = args.tmdb_token or os.getenv('TMDB_ACCESS_TOKEN')
+    tmdb_api_key = os.getenv('TMDB_API_KEY')
     
     if args.links:
         links_text = args.links
@@ -277,13 +444,32 @@ def main():
     
     print(f"📋 Found {len(links)} links to download")
     
-    downloader = AllDebridDownloader(api_key)
+    downloader = AllDebridDownloader(
+        api_key,
+        tmdb_token=tmdb_token,
+        tmdb_api_key=tmdb_api_key
+    )
     
     if args.download_only:
         downloaded = downloader.download_links(links)
         print(f"\n✅ Downloaded {len(downloaded)} files to {downloader.download_dir}")
-    else:
+    elif args.legacy:
+        # Use legacy organize method
         results = downloader.download_and_organize(links, args.output, args.language)
+        print(f"\n✅ Complete! Files organized in {args.output}")
+    else:
+        # Use smart TMDB-based organize
+        if not tmdb_token and not tmdb_api_key:
+            print("⚠️ TMDB credentials not found. Using legacy organize method.")
+            print("   Set TMDB_ACCESS_TOKEN for smart renaming with episode titles.")
+            results = downloader.download_and_organize(links, args.output, args.language)
+        else:
+            results = downloader.download_and_organize_smart(
+                links,
+                args.output,
+                language=args.language,
+                filter_audio=args.filter_audio
+            )
         print(f"\n✅ Complete! Files organized in {args.output}")
     
     return 0

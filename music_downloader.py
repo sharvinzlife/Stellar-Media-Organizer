@@ -184,6 +184,14 @@ class MusicDownloader:
             logger.info(message)
         self.progress_callback(message, level)
     
+    def _get_venv_bin_path(self) -> Path:
+        """Get the path to the virtual environment bin directory"""
+        import sys
+        # Get the directory containing the Python executable
+        python_path = Path(sys.executable)
+        # The bin directory is the parent of the python executable
+        return python_path.parent
+    
     def _check_tools(self):
         """Check if required tools are installed"""
         self.tools_available = {
@@ -192,21 +200,46 @@ class MusicDownloader:
             "ffmpeg": False,
         }
         
-        # Check yt-dlp
-        try:
-            subprocess.run(['yt-dlp', '--version'], capture_output=True, check=True)
-            self.tools_available["yt-dlp"] = True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            self._log("⚠️ yt-dlp not found. Install with: pip install yt-dlp", "warning")
+        # Get venv bin path for checking tools installed in venv
+        venv_bin = self._get_venv_bin_path()
         
-        # Check spotdl
-        try:
-            subprocess.run(['spotdl', '--version'], capture_output=True, check=True)
-            self.tools_available["spotdl"] = True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            self._log("⚠️ spotdl not found. Install with: pip install spotdl", "warning")
+        # Check yt-dlp (try venv first, then system)
+        yt_dlp_paths = [
+            venv_bin / 'yt-dlp',
+            'yt-dlp'  # System PATH
+        ]
+        for yt_dlp_path in yt_dlp_paths:
+            try:
+                subprocess.run([str(yt_dlp_path), '--version'], capture_output=True, check=True)
+                self.tools_available["yt-dlp"] = True
+                self._yt_dlp_path = str(yt_dlp_path)
+                break
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
         
-        # Check ffmpeg
+        if not self.tools_available["yt-dlp"]:
+            self._log("⚠️ yt-dlp not found. Install with: uv pip install yt-dlp", "warning")
+            self._yt_dlp_path = 'yt-dlp'
+        
+        # Check spotdl (try venv first, then system)
+        spotdl_paths = [
+            venv_bin / 'spotdl',
+            'spotdl'  # System PATH
+        ]
+        for spotdl_path in spotdl_paths:
+            try:
+                subprocess.run([str(spotdl_path), '--version'], capture_output=True, check=True)
+                self.tools_available["spotdl"] = True
+                self._spotdl_path = str(spotdl_path)
+                break
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
+        
+        if not self.tools_available["spotdl"]:
+            self._log("⚠️ spotdl not found. Install with: uv pip install spotdl", "warning")
+            self._spotdl_path = 'spotdl'
+        
+        # Check ffmpeg (system tool)
         try:
             subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
             self.tools_available["ffmpeg"] = True
@@ -356,8 +389,8 @@ class MusicDownloader:
             
             self._log(f"   Output template: {output_template}")
             
-            # Build yt-dlp command
-            cmd = ['yt-dlp', '--extract-audio']
+            # Build yt-dlp command (use venv path if available)
+            cmd = [self._yt_dlp_path, '--extract-audio']
             
             # Audio format (skip if 'original' to keep best quality)
             if audio_format != 'original':
@@ -377,9 +410,6 @@ class MusicDownloader:
                     '--parse-metadata', 'playlist_title:%(album)s',
                     '--parse-metadata', 'playlist_title:%(album_artist)s',
                     '--parse-metadata', 'playlist_index:%(track_number)s',
-                    # Download playlist cover
-                    '--write-thumbnail',
-                    '--convert-thumbnails', 'jpg',
                     '--yes-playlist',
                 ])
             else:
@@ -442,20 +472,50 @@ class MusicDownloader:
                 if process.returncode == 0:
                     self._log(f"✅ YouTube download complete: {url[:40]}...", "success")
                     
-                    # Handle playlist cover image
+                    # Handle playlist cover image - download separately
                     if is_playlist and playlist_dir and playlist_dir.exists():
                         self._log(f"   📁 Playlist folder: {playlist_dir}")
-                        # Find thumbnail and rename to cover.jpg
-                        for thumb in playlist_dir.glob('*.jpg'):
-                            if thumb.name != 'cover.jpg' and 'thumb' not in thumb.name.lower():
-                                cover_path = playlist_dir / 'cover.jpg'
-                                if not cover_path.exists():
-                                    try:
-                                        thumb.rename(cover_path)
-                                        self._log(f"   🖼️ Saved cover: cover.jpg")
-                                    except Exception as e:
-                                        self._log(f"   ⚠️ Could not rename thumbnail: {e}", "warning")
-                                    break
+                        cover_path = playlist_dir / 'cover.jpg'
+                        
+                        if not cover_path.exists():
+                            # Try to download playlist thumbnail using yt-dlp
+                            try:
+                                self._log(f"   🖼️ Fetching playlist cover...")
+                                # Get playlist info to extract thumbnail URL
+                                info_cmd = [
+                                    self._yt_dlp_path, '--flat-playlist', '--dump-single-json',
+                                    '--no-download', url
+                                ]
+                                info_result = subprocess.run(info_cmd, capture_output=True, text=True, timeout=30)
+                                if info_result.returncode == 0:
+                                    import json
+                                    playlist_info = json.loads(info_result.stdout)
+                                    
+                                    # Get thumbnail URL (try multiple fields)
+                                    thumb_url = None
+                                    if 'thumbnails' in playlist_info and playlist_info['thumbnails']:
+                                        # Get highest quality thumbnail
+                                        thumbs = sorted(playlist_info['thumbnails'], 
+                                                       key=lambda x: x.get('width', 0) * x.get('height', 0), 
+                                                       reverse=True)
+                                        thumb_url = thumbs[0].get('url')
+                                    elif 'thumbnail' in playlist_info:
+                                        thumb_url = playlist_info['thumbnail']
+                                    
+                                    if thumb_url:
+                                        # Download the thumbnail
+                                        import requests
+                                        response = requests.get(thumb_url, timeout=15)
+                                        if response.status_code == 200:
+                                            with open(cover_path, 'wb') as f:
+                                                f.write(response.content)
+                                            self._log(f"   🖼️ Saved playlist cover: cover.jpg", "success")
+                                        else:
+                                            self._log(f"   ⚠️ Could not download cover (HTTP {response.status_code})", "warning")
+                                    else:
+                                        self._log(f"   ⚠️ No playlist thumbnail found", "warning")
+                            except Exception as e:
+                                self._log(f"   ⚠️ Could not fetch playlist cover: {e}", "warning")
                     
                     files.extend(downloaded_files)
                 else:
@@ -489,23 +549,37 @@ class MusicDownloader:
         files = []
         errors = []
         
-        # spotdl output format
-        output_format = "{album}/{track-number} - {title}"
+        # spotdl output format - use playlist structure:
+        # {list-name} = playlist/album name  
+        # {list-position} = position in playlist (1, 2, 3...)
+        # {artists} = track artist(s)
+        # {title} = track title
+        # Result: "HITS 2025/1 - Billie Eilish - BIRDS OF A FEATHER.flac"
+        output_format = "{list-name}/{list-position} - {artists} - {title}"
         
         # Handle 'original' format - spotdl defaults to mp3, use flac for best quality
         actual_format = 'flac' if audio_format == 'original' else audio_format
+        
+        # Get Spotify API credentials from environment
+        spotify_client_id = os.getenv('SPOTIPY_CLIENT_ID', '')
+        spotify_client_secret = os.getenv('SPOTIPY_CLIENT_SECRET', '')
         
         for url in urls:
             self._log(f"🎵 Downloading from Spotify: {url[:60]}...")
             
             cmd = [
-                'spotdl',
+                self._spotdl_path,
                 'download', url,
-                '--output', str(self.output_dir),
+                '--output', str(self.output_dir / output_format),
                 '--format', actual_format,
                 '--bitrate', '320k',
                 '--threads', '4',
             ]
+            
+            # Add Spotify API credentials if available (for higher rate limits)
+            if spotify_client_id and spotify_client_secret:
+                cmd.extend(['--client-id', spotify_client_id])
+                cmd.extend(['--client-secret', spotify_client_secret])
             
             try:
                 process = subprocess.Popen(

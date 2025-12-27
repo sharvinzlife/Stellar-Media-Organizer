@@ -28,12 +28,18 @@ export const analyzeFiles = async (directoryPath: string) => {
   return response.data;
 };
 
+export interface NASDestination {
+  nas_name: string;
+  category: string;
+}
+
 export interface ProcessRequest {
   operation: string;
   directory_path: string;
   output_path?: string;
   target_language?: string;
   volume_boost?: number;
+  nas_destination?: NASDestination;
 }
 
 export const processFiles = async (data: ProcessRequest): Promise<ProcessResult> => {

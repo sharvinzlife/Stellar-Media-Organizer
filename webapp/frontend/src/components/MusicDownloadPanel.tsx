@@ -1,6 +1,7 @@
 import React, { useState, useEffect, ChangeEvent } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/Card';
 import Button from './ui/Button';
+import DownloadAnimation from './DownloadAnimation';
 import {
   Cloud,
   Download,
@@ -363,24 +364,32 @@ Examples:
         </div>
 
         {/* Download Button */}
-        <Button
-          onClick={handleDownload}
-          disabled={loading || urlCount === 0}
-          size="lg"
-          className="w-full bg-gradient-to-r from-green-500 to-purple-500 hover:from-green-600 hover:to-purple-600"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Downloading...
-            </>
-          ) : (
-            <>
-              <Download className="h-5 w-5" />
-              Download & Organize ({urlCount} URL{urlCount !== 1 ? 's' : ''})
-            </>
-          )}
-        </Button>
+        <div className="relative">
+          {loading && <DownloadAnimation variant="bar" className="mb-2" />}
+          <Button
+            onClick={handleDownload}
+            disabled={loading || urlCount === 0}
+            size="lg"
+            className={`w-full relative overflow-hidden ${
+              loading 
+                ? 'bg-gradient-to-r from-emerald-600 to-emerald-500' 
+                : 'bg-gradient-to-r from-green-500 to-purple-500 hover:from-green-600 hover:to-purple-600'
+            }`}
+          >
+            {loading && <DownloadAnimation variant="overlay" />}
+            {loading ? (
+              <>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Downloading...
+              </>
+            ) : (
+              <>
+                <Download className="h-5 w-5" />
+                Download & Organize ({urlCount} URL{urlCount !== 1 ? 's' : ''})
+              </>
+            )}
+          </Button>
+        </div>
 
         <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-1">
           <Music className="h-3 w-3" />

@@ -351,32 +351,29 @@ python music_organizer.py /path/to/music \
 
 ## 📝 Changelog
 
+### v3.0.0 - *NAS Integration & UI Overhaul* 🚀 (December 2024)
+
+#### 🌐 NAS Integration
+- 🔗 **SMB/NAS Support** - Direct transfer to Synology (Lharmony) & Unraid (Streamwave)
+- 📂 **Smart Routing** - Movies, TV shows, Malayalam content auto-organized
+- 🎵 **Music to NAS** - Direct music library sync to Lharmony
+- 📊 **NAS Status Panel** - Real-time storage monitoring for all locations
+
+#### ✨ UI/UX Enhancements
+- 🎨 **Glitchy Animations** - Cyberpunk-inspired header & footer effects
+- 🌟 **Download Animation** - Green sparkling effects during transfers
+- 🎭 **Hero Text Animation** - Word-by-word appearance with gradient flow
+- 📱 **Bigger Tab Toggle** - Enhanced Video/Music mode switcher
+- 🚫 **Hidden Scrollbars** - Clean, distraction-free interface
+- 🔘 **Hover Effects** - Interactive animations on all cards, icons, buttons
+
+#### 🔧 Technical Improvements
+- 🐍 **spotdl Fix** - Proper venv detection for Spotify downloads
+- 🎬 **TMDB Client** - Robust episode title fetching with caching
+- 🎯 **OMDb Primary** - OMDb as primary metadata source, TMDB secondary
+- 📦 **Smart Renamer** - AllDebrid integration with metadata lookup
+
 ### v2.0.0 - *Stellar Release* ⭐ (December 2024)
-
-#### 🎵 Music Features
-- ✨ Multi-source download (YouTube Music, Spotify, AllDebrid)
-- 🎛️ Professional audio enhancement with 6 presets
-- 🎼 MusicBrainz metadata integration
-- 📊 EBU R128 loudness normalization
-- 🎧 Format conversion (FLAC, MP3, M4A, Opus)
-
-#### 🎬 Video Features  
-- 🔍 IMDB integration for accurate naming
-- ⚡ GPU-accelerated video conversion
-- 🔊 Audio track filtering by language
-- 📁 Plex/Jellyfin compatible structure
-
-#### 🖥️ UI/UX
-- 🌌 Space-themed glassmorphism design
-- 📊 Real-time job tracking dashboard
-- 🎯 Activity monitoring with live logs
-- 📱 Responsive mobile-friendly layout
-
-#### 🔧 Technical
-- ⚡ FastAPI backend with async support
-- ⚛️ React 18 with TypeScript
-- 🎨 TailwindCSS + DaisyUI styling
-- 🐳 Docker support for deployment
 
 ---
 

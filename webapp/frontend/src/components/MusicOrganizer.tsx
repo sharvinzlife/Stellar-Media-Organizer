@@ -15,8 +15,10 @@ import {
   Settings2,
   Headphones,
   Radio,
+  HardDrive,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import api from '../lib/api';
 
 interface Preset {
   id: string;
@@ -50,6 +52,14 @@ interface ProcessResponse {
   job_id?: number;
 }
 
+interface NASLocation {
+  name: string;
+  host: string;
+  type: string;
+  mounted: boolean;
+  categories: string[];
+}
+
 declare global {
   interface Window {
     addLog?: (message: string, type?: string) => void;
@@ -64,7 +74,12 @@ const MusicOrganizer: React.FC = () => {
   const [enhanceAudio, setEnhanceAudio] = useState<boolean>(true);
   const [lookupMetadata, setLookupMetadata] = useState<boolean>(true);
   const [processing, setProcessing] = useState<boolean>(false);
-  const [enhanceOnly, setEnhanceOnly] = useState<boolean>(true); // New: preserve folder structure
+  const [enhanceOnly, setEnhanceOnly] = useState<boolean>(true);
+  
+  // NAS destination - NAS is primary
+  const [destinationType, setDestinationType] = useState<'local' | 'nas'>('nas');
+  const [nasLocations, setNasLocations] = useState<NASLocation[]>([]);
+  const [selectedNAS, setSelectedNAS] = useState<string>('');
   
   const [status, setStatus] = useState<MusicStatus | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -73,6 +88,7 @@ const MusicOrganizer: React.FC = () => {
   useEffect(() => {
     fetchStatus();
     fetchPresets();
+    loadNASLocations();
   }, []);
 
   const fetchStatus = async (): Promise<void> => {
@@ -99,15 +115,38 @@ const MusicOrganizer: React.FC = () => {
     }
   };
 
+  const loadNASLocations = async (): Promise<void> => {
+    try {
+      const response = await api.get('/nas/list');
+      const locations = response.data.nas_locations || [];
+      // Filter to only NAS with music category (Lharmony)
+      const musicNAS = locations.filter((nas: NASLocation) => 
+        nas.categories.includes('music')
+      );
+      setNasLocations(musicNAS);
+      if (musicNAS.length > 0) {
+        setSelectedNAS(musicNAS[0].name);
+      }
+    } catch {
+      // NAS not configured
+    }
+  };
+
   const handleProcess = async (): Promise<void> => {
     if (!sourcePath) {
       toast.error('Please enter a source directory path');
       return;
     }
 
+    if (destinationType === 'nas' && !selectedNAS) {
+      toast.error('Please select a NAS destination');
+      return;
+    }
+
     setProcessing(true);
     const mode = enhanceOnly ? 'Enhance Only' : 'Organize & Enhance';
-    window.addLog?.(`🎵 Starting music processing (${mode})...`, 'info');
+    const dest = destinationType === 'nas' ? `NAS: ${selectedNAS}` : `Local: ${outputPath}`;
+    window.addLog?.(`🎵 Starting music processing (${mode}) → ${dest}`, 'info');
     window.addLog?.(`   Preset: ${preset}, Format: ${outputFormat}`, 'info');
 
     try {
@@ -116,17 +155,25 @@ const MusicOrganizer: React.FC = () => {
       const body = enhanceOnly 
         ? {
             source_path: sourcePath,
-            output_path: outputPath,
+            output_path: destinationType === 'local' ? outputPath : undefined,
             preset,
             output_format: outputFormat,
+            nas_destination: destinationType === 'nas' ? {
+              nas_name: selectedNAS,
+              category: 'music',
+            } : undefined,
           }
         : {
             source_path: sourcePath,
-            output_path: outputPath,
+            output_path: destinationType === 'local' ? outputPath : undefined,
             preset,
             output_format: outputFormat,
             enhance_audio: enhanceAudio,
             lookup_metadata: lookupMetadata,
+            nas_destination: destinationType === 'nas' ? {
+              nas_name: selectedNAS,
+              category: 'music',
+            } : undefined,
           };
 
       const response = await fetch(endpoint, {
@@ -235,17 +282,75 @@ const MusicOrganizer: React.FC = () => {
           <div className="space-y-3">
             <label className="text-sm font-semibold text-white flex items-center gap-2">
               <FolderOpen className="h-4 w-4 text-purple-400" />
-              Output Folder
+              Destination
             </label>
-            <Input
-              type="text"
-              placeholder="/Users/sharvin/Documents/Music"
-              value={outputPath}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setOutputPath(e.target.value)}
-            />
-            <p className="text-xs text-slate-500">
-              📁 Structure: /Artist/Album (Year)/01 - Track.ext
-            </p>
+            
+            {/* Destination Type Toggle */}
+            <div className="flex items-center gap-2 p-1 bg-white/5 rounded-xl">
+              <button
+                onClick={() => setDestinationType('local')}
+                className={`
+                  flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg transition-all
+                  ${destinationType === 'local' 
+                    ? 'bg-purple-500 text-white shadow-lg' 
+                    : 'text-slate-400 hover:text-white hover:bg-white/10'
+                  }
+                `}
+              >
+                <FolderOpen className="h-4 w-4" />
+                <span className="font-medium">Local Folder</span>
+              </button>
+              <button
+                onClick={() => setDestinationType('nas')}
+                disabled={nasLocations.length === 0}
+                className={`
+                  flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg transition-all
+                  ${destinationType === 'nas' 
+                    ? 'bg-emerald-500 text-white shadow-lg' 
+                    : 'text-slate-400 hover:text-white hover:bg-white/10'
+                  }
+                  ${nasLocations.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+              >
+                <HardDrive className="h-4 w-4" />
+                <span className="font-medium">NAS Storage</span>
+              </button>
+            </div>
+
+            {/* Local Folder Input */}
+            {destinationType === 'local' && (
+              <>
+                <Input
+                  type="text"
+                  placeholder="/Users/sharvin/Documents/Music"
+                  value={outputPath}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setOutputPath(e.target.value)}
+                />
+                <p className="text-xs text-slate-500">
+                  📁 Structure: /Artist/Album (Year)/01 - Track.ext
+                </p>
+              </>
+            )}
+
+            {/* NAS Destination Selector */}
+            {destinationType === 'nas' && (
+              <div className="space-y-3">
+                <select
+                  value={selectedNAS}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setSelectedNAS(e.target.value)}
+                  className="w-full h-11 px-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                >
+                  {nasLocations.map((nas) => (
+                    <option key={nas.name} value={nas.name}>
+                      {nas.name} ({nas.host}) - {nas.type}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-emerald-400/70 bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20">
+                  🌐 Music will be moved to NAS: {selectedNAS} → /music/Artist/Album (Year)/
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Processing Mode */}

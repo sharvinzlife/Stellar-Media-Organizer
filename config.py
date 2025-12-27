@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     
     # ========== Application Info ==========
     app_name: str = Field(default="Media Organizer Pro", description="Application name")
-    app_version: str = Field(default="6.1.0", description="Application version")
+    app_version: str = Field(default="3.0.0", description="Application version")
     debug: bool = Field(default=False, description="Enable debug mode")
     
     # ========== Paths ==========
@@ -70,12 +70,45 @@ class Settings(BaseSettings):
     # ========== IMDB/OMDb Settings ==========
     omdb_api_key: str = Field(
         default="8800e3b1",
-        description="OMDb API key for IMDB lookups"
+        description="OMDb API key for IMDB lookups (PRIMARY)"
+    )
+    use_omdb_primary: bool = Field(
+        default=True,
+        description="Use OMDb as primary metadata source"
     )
     imdb_cache_enabled: bool = Field(
         default=True,
         description="Enable IMDB lookup caching"
     )
+    
+    # ========== TMDB Settings ==========
+    tmdb_access_token: Optional[str] = Field(
+        default=None,
+        description="TMDB Read Access Token (Bearer auth, for episode titles)"
+    )
+    tmdb_api_key: Optional[str] = Field(
+        default=None,
+        description="TMDB API key (v3 auth)"
+    )
+    tmdb_enabled: bool = Field(
+        default=True,
+        description="Enable TMDB lookups for metadata"
+    )
+    
+    # ========== SMB/NAS Settings ==========
+    # Lharmony (Synology)
+    lharmony_host: Optional[str] = Field(default=None, description="Lharmony NAS host")
+    lharmony_username: Optional[str] = Field(default=None, description="Lharmony username")
+    lharmony_password: Optional[str] = Field(default=None, description="Lharmony password")
+    lharmony_share: str = Field(default="data", description="Lharmony share name")
+    lharmony_media_path: str = Field(default="/media", description="Lharmony media path")
+    
+    # Streamwave (Unraid)
+    streamwave_host: Optional[str] = Field(default=None, description="Streamwave NAS host")
+    streamwave_username: Optional[str] = Field(default=None, description="Streamwave username")
+    streamwave_password: Optional[str] = Field(default=None, description="Streamwave password")
+    streamwave_share: str = Field(default="Data-Streamwave", description="Streamwave share name")
+    streamwave_media_path: str = Field(default="/media", description="Streamwave media path")
     
     # ========== Processing Settings ==========
     max_upload_size: int = Field(

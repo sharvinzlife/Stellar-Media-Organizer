@@ -35,6 +35,14 @@ except ImportError:
     IMDB_AVAILABLE = False
     IMDBSeriesInfo = None
 
+# AI Metadata Extraction
+try:
+    from core.ai_metadata_extractor import AIMetadataExtractor, VideoMetadata as AIVideoMetadata, MediaType as AIMediaType
+    AI_EXTRACTION_AVAILABLE = True
+except ImportError:
+    AI_EXTRACTION_AVAILABLE = False
+    AIMetadataExtractor = None
+
 # MKV support
 try:
     from pymkv import MKVFile
@@ -137,6 +145,7 @@ class SeriesDetector:
     # Use set for O(1) lookups (Hack #1)
     _imdb_cache: Dict[str, 'IMDBSeriesInfo'] = {}
     _failed_lookups: Set[str] = set()  # Track failed lookups to avoid retrying
+    _ai_extractor: Optional['AIMetadataExtractor'] = None  # Lazy-loaded AI extractor
     
     # Fallback years (used if IMDB unavailable)
     KNOWN_SERIES: Dict[str, str] = {
@@ -199,11 +208,28 @@ class SeriesDetector:
         
         return series_name.title(), None
     
+    @classmethod
+    def get_ai_extractor(cls) -> Optional['AIMetadataExtractor']:
+        """Get or create AI metadata extractor (lazy loading)."""
+        if not AI_EXTRACTION_AVAILABLE:
+            return None
+        if cls._ai_extractor is None:
+            try:
+                cls._ai_extractor = AIMetadataExtractor()
+            except Exception as e:
+                logger.warning(f"Failed to initialize AI extractor: {e}")
+                return None
+        return cls._ai_extractor
+    
     @staticmethod
-    def detect_series(filename: str) -> Tuple[bool, Optional[str], Optional[int], Optional[int], Optional[str], Optional[str]]:
+    def detect_series(filename: str, use_ai: bool = True) -> Tuple[bool, Optional[str], Optional[int], Optional[int], Optional[str], Optional[str]]:
         """
         Detect if filename is a TV series.
         Returns: (is_series, series_name, season, episode, year, episode_title)
+        
+        Args:
+            filename: The filename to parse
+            use_ai: Whether to use AI extraction as fallback for complex filenames
         """
         # Try scene release pattern first (most common)
         match = Patterns.SCENE_SERIES.search(filename)
@@ -239,6 +265,21 @@ class SeriesDetector:
                 year = imdb_year or year
                 
                 return True, title, season, episode, year, None
+        
+        # Try AI extraction as fallback for complex filenames
+        if use_ai and AI_EXTRACTION_AVAILABLE:
+            ai_extractor = SeriesDetector.get_ai_extractor()
+            if ai_extractor:
+                try:
+                    ai_result = ai_extractor.extract_video_metadata(filename, use_ai_fallback=True)
+                    if ai_result and ai_result.media_type == AIMediaType.SERIES and ai_result.season and ai_result.episode:
+                        # Get IMDB info for the AI-extracted title
+                        title, imdb_year = SeriesDetector.get_series_info(ai_result.title)
+                        year = imdb_year or (str(ai_result.year) if ai_result.year else None)
+                        logger.info(f"AI extracted series: {title} S{ai_result.season:02d}E{ai_result.episode:02d}")
+                        return True, title, ai_result.season, ai_result.episode, year, ai_result.episode_title
+                except Exception as e:
+                    logger.debug(f"AI series detection failed: {e}")
         
         return False, None, None, None, None, None
     
@@ -510,8 +551,13 @@ class MediaOrganizer:
                 return cleaner.clean(filename), cleaner.get_format_name()
         return filename, None
     
-    def analyze_file(self, file_path: Path) -> MediaFile:
-        """Analyze a media file and extract metadata."""
+    def analyze_file(self, file_path: Path, use_ai: bool = True) -> MediaFile:
+        """Analyze a media file and extract metadata.
+        
+        Args:
+            file_path: Path to the media file
+            use_ai: Whether to use AI extraction for complex filenames
+        """
         media_file = MediaFile(path=file_path, original_name=file_path.name)
         
         # Clean filename
@@ -519,14 +565,34 @@ class MediaOrganizer:
         media_file.cleaned_name = cleaned
         media_file.format_detected = format_detected
         
-        # Detect series from original filename
-        is_series, name, season, episode, year, ep_title = SeriesDetector.detect_series(file_path.name)
+        # Detect series from original filename (with AI fallback)
+        is_series, name, season, episode, year, ep_title = SeriesDetector.detect_series(file_path.name, use_ai=use_ai)
         media_file.is_series = is_series
         media_file.series_name = name
         media_file.season = season
         media_file.episode = episode
         media_file.year = year
         media_file.episode_title = ep_title
+        
+        # For movies (not series), try AI extraction if no year was found or format wasn't detected
+        if not is_series and use_ai and AI_EXTRACTION_AVAILABLE:
+            # Check if we should use AI (no year found, or format not detected)
+            needs_ai = (not year and '(' not in cleaned) or format_detected is None
+            if needs_ai:
+                ai_extractor = SeriesDetector.get_ai_extractor()
+                if ai_extractor:
+                    try:
+                        ai_result = ai_extractor.extract_video_metadata(file_path.name, use_ai_fallback=True)
+                        if ai_result and ai_result.title and ai_result.confidence > 0.7:
+                            # Use AI-extracted metadata
+                            if ai_result.year:
+                                media_file.cleaned_name = f"{ai_result.title} ({ai_result.year})"
+                                media_file.year = ai_result.year
+                            else:
+                                media_file.cleaned_name = ai_result.title
+                            logger.info(f"AI extracted movie: {media_file.cleaned_name} (confidence: {ai_result.confidence})")
+                    except Exception as e:
+                        logger.debug(f"AI movie extraction failed: {e}")
         
         return media_file
     

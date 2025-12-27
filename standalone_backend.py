@@ -979,6 +979,9 @@ MUSICBRAINZ_CLIENT_ID = os.getenv("MUSICBRAINZ_CLIENT_ID", "")
 MUSICBRAINZ_CLIENT_SECRET = os.getenv("MUSICBRAINZ_CLIENT_SECRET", "")
 MUSIC_OUTPUT_PATH = os.getenv("MUSIC_OUTPUT_PATH", "/Users/sharvin/Documents/Music")
 
+# Discogs API token
+DISCOGS_API_TOKEN = os.getenv("DISCOGS_API_TOKEN", "")
+
 
 def process_music_background(job_id: int, request: MusicProcessRequest):
     """Background task for music processing"""
@@ -1066,13 +1069,14 @@ def process_music_background(job_id: int, request: MusicProcessRequest):
 async def get_music_status():
     """Check if Music Organizer is configured"""
     try:
-        from music_organizer import MUSICBRAINZ_AVAILABLE, MUTAGEN_AVAILABLE
+        from music_organizer import MUSICBRAINZ_AVAILABLE, MUTAGEN_AVAILABLE, AI_EXTRACTION_AVAILABLE
         
         return {
             "configured": True,
             "musicbrainz_available": MUSICBRAINZ_AVAILABLE,
             "musicbrainz_configured": bool(MUSICBRAINZ_CLIENT_ID),
             "mutagen_available": MUTAGEN_AVAILABLE,
+            "ai_extraction_available": AI_EXTRACTION_AVAILABLE,
             "default_output": MUSIC_OUTPUT_PATH
         }
     except ImportError:
@@ -1081,8 +1085,301 @@ async def get_music_status():
             "musicbrainz_available": False,
             "musicbrainz_configured": False,
             "mutagen_available": False,
+            "ai_extraction_available": False,
             "default_output": MUSIC_OUTPUT_PATH
         }
+
+
+# ============================================================================
+# AI METADATA EXTRACTION API ENDPOINTS
+# ============================================================================
+
+class AIExtractRequest(BaseModel):
+    """Request model for AI metadata extraction"""
+    filenames: List[str]
+    media_type: str = "auto"  # auto, video, music
+    use_ai_fallback: bool = True
+    force_ai: bool = False
+
+
+class VideoMetadataResponse(BaseModel):
+    """Response model for video metadata"""
+    title: str
+    year: Optional[int] = None
+    media_type: str
+    season: Optional[int] = None
+    episode: Optional[int] = None
+    episode_title: Optional[str] = None
+    quality: Optional[str] = None
+    source: Optional[str] = None
+    codec: Optional[str] = None
+    audio: Optional[str] = None
+    language: Optional[str] = None
+    release_group: Optional[str] = None
+    confidence: float
+
+
+class MusicMetadataResponse(BaseModel):
+    """Response model for music metadata"""
+    artist: str
+    title: str
+    album: Optional[str] = None
+    track_number: Optional[int] = None
+    year: Optional[int] = None
+    genre: Optional[str] = None
+    confidence: float
+
+
+@app.get("/api/v1/ai/status")
+async def get_ai_status():
+    """Check if AI metadata extraction is available"""
+    try:
+        from core.ai_metadata_extractor import AIMetadataExtractor, OPENAI_AVAILABLE, VENICE_API_KEY
+        
+        ai_available = OPENAI_AVAILABLE and bool(VENICE_API_KEY)
+        
+        return {
+            "available": ai_available,
+            "openai_package": OPENAI_AVAILABLE,
+            "api_key_configured": bool(VENICE_API_KEY),
+            "model": "llama-3.2-3b",
+            "provider": "Venice AI"
+        }
+    except ImportError:
+        return {
+            "available": False,
+            "openai_package": False,
+            "api_key_configured": False,
+            "model": None,
+            "provider": None
+        }
+
+
+@app.post("/api/v1/ai/extract")
+async def extract_metadata(request: AIExtractRequest):
+    """Extract metadata from filenames using AI-powered hybrid extraction"""
+    try:
+        from core.ai_metadata_extractor import AIMetadataExtractor, MediaType
+        
+        extractor = AIMetadataExtractor()
+        results = []
+        
+        for filename in request.filenames:
+            # Determine media type
+            if request.media_type == "auto":
+                # Auto-detect based on extension
+                ext = Path(filename).suffix.lower()
+                is_music = ext in {'.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma'}
+                is_video = ext in {'.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm'}
+                media_type = "music" if is_music else "video" if is_video else "video"
+            else:
+                media_type = request.media_type
+            
+            if media_type == "music":
+                meta = extractor.extract_music_metadata(
+                    filename, 
+                    use_ai_fallback=request.use_ai_fallback,
+                    force_ai=request.force_ai
+                )
+                results.append({
+                    "filename": filename,
+                    "type": "music",
+                    "metadata": {
+                        "artist": meta.artist,
+                        "title": meta.title,
+                        "album": meta.album,
+                        "track_number": meta.track_number,
+                        "year": meta.year,
+                        "genre": meta.genre,
+                        "confidence": meta.confidence
+                    }
+                })
+            else:
+                meta = extractor.extract_video_metadata(
+                    filename,
+                    use_ai_fallback=request.use_ai_fallback,
+                    force_ai=request.force_ai
+                )
+                results.append({
+                    "filename": filename,
+                    "type": "video",
+                    "metadata": {
+                        "title": meta.title,
+                        "year": meta.year,
+                        "media_type": meta.media_type.value,
+                        "season": meta.season,
+                        "episode": meta.episode,
+                        "episode_title": meta.episode_title,
+                        "quality": meta.quality,
+                        "source": meta.source,
+                        "codec": meta.codec,
+                        "audio": meta.audio,
+                        "language": meta.language,
+                        "release_group": meta.release_group,
+                        "confidence": meta.confidence
+                    }
+                })
+        
+        return {
+            "success": True,
+            "results": results,
+            "count": len(results)
+        }
+        
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"AI extraction not available: {e}")
+    except Exception as e:
+        logger.error(f"AI extraction error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/ai/extract/video")
+async def extract_video_metadata(filenames: List[str], force_ai: bool = False):
+    """Extract video metadata from filenames"""
+    try:
+        from core.ai_metadata_extractor import AIMetadataExtractor
+        
+        extractor = AIMetadataExtractor()
+        results = []
+        
+        for filename in filenames:
+            meta = extractor.extract_video_metadata(filename, use_ai_fallback=True, force_ai=force_ai)
+            results.append({
+                "filename": filename,
+                "title": meta.title,
+                "year": meta.year,
+                "media_type": meta.media_type.value,
+                "season": meta.season,
+                "episode": meta.episode,
+                "quality": meta.quality,
+                "language": meta.language,
+                "confidence": meta.confidence
+            })
+        
+        return {"success": True, "results": results}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/ai/extract/music")
+async def extract_music_metadata(filenames: List[str], force_ai: bool = False):
+    """Extract music metadata from filenames"""
+    try:
+        from core.ai_metadata_extractor import AIMetadataExtractor
+        
+        extractor = AIMetadataExtractor()
+        results = []
+        
+        for filename in filenames:
+            meta = extractor.extract_music_metadata(filename, use_ai_fallback=True, force_ai=force_ai)
+            results.append({
+                "filename": filename,
+                "artist": meta.artist,
+                "title": meta.title,
+                "album": meta.album,
+                "track_number": meta.track_number,
+                "year": meta.year,
+                "confidence": meta.confidence
+            })
+        
+        return {"success": True, "results": results}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# DISCOGS API ENDPOINTS
+# ============================================================================
+
+@app.get("/api/v1/discogs/status")
+async def get_discogs_status():
+    """Check if Discogs API is configured"""
+    try:
+        from core.discogs_lookup import DISCOGS_AVAILABLE
+        
+        return {
+            "available": DISCOGS_AVAILABLE,
+            "configured": bool(DISCOGS_API_TOKEN),
+            "api_token_set": bool(DISCOGS_API_TOKEN)
+        }
+    except ImportError:
+        return {
+            "available": False,
+            "configured": False,
+            "api_token_set": False
+        }
+
+
+@app.post("/api/v1/discogs/search/track")
+async def discogs_search_track(title: str, artist: str = ""):
+    """Search for a track on Discogs"""
+    if not DISCOGS_API_TOKEN:
+        raise HTTPException(status_code=400, detail="Discogs API token not configured")
+    
+    try:
+        from core.discogs_lookup import DiscogsClient
+        
+        client = DiscogsClient(DISCOGS_API_TOKEN)
+        track = client.search_track(title, artist)
+        
+        if track:
+            return {
+                "success": True,
+                "track": {
+                    "title": track.title,
+                    "artist": track.artist,
+                    "album": track.album,
+                    "year": track.year,
+                    "track_number": track.track_number,
+                    "genre": track.genre,
+                    "style": track.style,
+                    "label": track.label,
+                    "discogs_release_id": track.discogs_release_id
+                }
+            }
+        else:
+            return {"success": False, "message": "Track not found"}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/discogs/search/album")
+async def discogs_search_album(album: str, artist: str = ""):
+    """Search for an album on Discogs"""
+    if not DISCOGS_API_TOKEN:
+        raise HTTPException(status_code=400, detail="Discogs API token not configured")
+    
+    try:
+        from core.discogs_lookup import DiscogsClient
+        
+        client = DiscogsClient(DISCOGS_API_TOKEN)
+        result = client.search_album(album, artist)
+        
+        if result:
+            return {
+                "success": True,
+                "album": {
+                    "title": result.title,
+                    "artist": result.artist,
+                    "year": result.year,
+                    "genres": result.genres,
+                    "styles": result.styles,
+                    "labels": result.labels,
+                    "country": result.country,
+                    "format": result.format,
+                    "track_count": result.track_count,
+                    "cover_url": result.cover_url,
+                    "discogs_release_id": result.discogs_release_id
+                }
+            }
+        else:
+            return {"success": False, "message": "Album not found"}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/v1/music/presets")
@@ -1503,7 +1800,7 @@ def process_music_download_background(
     db.update_job_progress(job_id, progress=0, current_file="Initializing...")
     
     # Track download progress
-    download_state = {"current_track": 0, "total_tracks": 0, "current_file": ""}
+    download_state = {"current_track": 0, "total_tracks": 0, "current_file": "", "last_update": 0, "current_progress": 5}
     
     try:
         add_job_log(job_id, f"Starting multi-source download of {len(urls)} URLs...", "info")
@@ -1523,10 +1820,52 @@ def process_music_download_background(
         with tempfile.TemporaryDirectory() as temp_dir:
             # Enhanced progress callback that updates job progress
             def progress_callback(msg: str, level: str = "info"):
+                import time
                 add_job_log(job_id, msg, level)
                 logger.info(f"[Job {job_id}] {msg}")
                 
-                # Parse track number from destination paths like "/path/PlaylistName/42 - Artist - Title.mp3"
+                # Rate limit progress updates to avoid database spam
+                current_time = time.time()
+                if current_time - download_state["last_update"] < 0.5:
+                    return
+                download_state["last_update"] = current_time
+                
+                # Parse spotdl output patterns:
+                # "Downloaded "Song Name": /path/to/file.flac"
+                # "Processing: Song Name"
+                # "Skipping Song Name (file already exists)"
+                # "Found 50 songs in playlist"
+                
+                # Detect total tracks from playlist info
+                total_match = re.search(r'Found (\d+) songs? in', msg, re.IGNORECASE)
+                if total_match:
+                    download_state["total_tracks"] = int(total_match.group(1))
+                    db.update_job_progress(job_id, progress=8, current_file=f"Found {download_state['total_tracks']} tracks")
+                    return
+                
+                # Track downloaded/skipped songs
+                if 'Downloaded' in msg or 'Skipping' in msg:
+                    download_state["current_track"] += 1
+                    # Extract song name
+                    song_match = re.search(r'(?:Downloaded|Skipping)\s+"?([^":]+)"?', msg)
+                    if song_match:
+                        download_state["current_file"] = song_match.group(1).strip()[:50]
+                    
+                    # Calculate progress (download phase is 5-50%)
+                    total = download_state["total_tracks"] or 50  # Default estimate
+                    progress = 5 + (download_state["current_track"] / total) * 45
+                    progress = min(progress, 50)
+                    
+                    db.update_job_progress(
+                        job_id, 
+                        progress=progress, 
+                        current_file=f"🎵 {download_state['current_track']}/{total}: {download_state['current_file']}",
+                        processed_files=download_state["current_track"]
+                    )
+                    return
+                
+                # Parse yt-dlp style output (for YouTube Music)
+                # "[download] Destination: /path/to/file.mp3"
                 if 'Destination:' in msg or '[ExtractAudio]' in msg:
                     # Extract track number from filename pattern "XX - "
                     match = re.search(r'/(\d+)\s*-\s*[^/]+\.(flac|mp3|m4a|opus|webm)$', msg, re.IGNORECASE)
@@ -1534,25 +1873,35 @@ def process_music_download_background(
                         track_num = int(match.group(1))
                         if track_num > download_state["current_track"]:
                             download_state["current_track"] = track_num
-                            # Extract filename
                             filename_match = re.search(r'/([^/]+)\.(flac|mp3|m4a|opus|webm)$', msg, re.IGNORECASE)
                             if filename_match:
-                                download_state["current_file"] = filename_match.group(1)
+                                download_state["current_file"] = filename_match.group(1)[:50]
                             
-                            # Update progress (download phase is 5-50%)
-                            # Estimate total tracks if we don't know yet
-                            if download_state["total_tracks"] == 0:
-                                download_state["total_tracks"] = max(track_num * 2, 50)  # Estimate
-                            
-                            progress = 5 + (track_num / download_state["total_tracks"]) * 45
-                            progress = min(progress, 50)  # Cap at 50% for download phase
+                            total = download_state["total_tracks"] or max(track_num * 2, 50)
+                            progress = 5 + (track_num / total) * 45
+                            progress = min(progress, 50)
+                            download_state["current_progress"] = progress
                             
                             db.update_job_progress(
                                 job_id, 
                                 progress=progress, 
-                                current_file=f"Downloading track {track_num}: {download_state['current_file'][:50]}...",
+                                current_file=f"⬇️ Track {track_num}: {download_state['current_file']}",
                                 processed_files=track_num
                             )
+                    return
+                
+                # Handle rate limit messages
+                if 'rate limit' in msg.lower() or '429' in msg:
+                    current_prog = download_state.get("current_progress", 10)
+                    db.update_job_progress(job_id, progress=current_prog, current_file="⏳ Rate limited, waiting...")
+                    return
+                
+                # Handle processing messages
+                if 'Processing' in msg:
+                    song_match = re.search(r'Processing:?\s*(.+)', msg)
+                    if song_match:
+                        current_prog = download_state.get("current_progress", 10)
+                        db.update_job_progress(job_id, progress=current_prog, current_file=f"🔄 {song_match.group(1)[:50]}...")
             
             # Initialize downloader
             downloader = MusicDownloader(
@@ -1584,195 +1933,94 @@ def process_music_download_background(
                 raise Exception(f"Download failed: {', '.join(result.errors)}")
             
             add_job_log(job_id, f"Download complete. {result.message}", "info")
-            db.update_job_progress(job_id, progress=50, current_file="Processing music files...")
+            db.update_job_progress(job_id, progress=50, current_file="Organizing music files...")
             
-            # For playlists from YouTube/Spotify: preserve folder structure, just enhance audio
-            # For AllDebrid or single tracks: use full music organizer with MusicBrainz
             detected_source = result.source if result.source != DownloadSource.AUTO else download_source
+            add_job_log(job_id, f"🔍 Source: {detected_source.value}", "info")
             
-            add_job_log(job_id, f"🔍 Debug: is_playlist={is_playlist}, detected_source={detected_source}", "info")
+            # For Spotify/YouTube downloads, files already have embedded metadata
+            # Use that metadata to organize into Plex/Jellyfin structure
+            # No need for external API lookups!
             
-            # Check if we should preserve playlist structure
-            # For ANY playlist (YouTube, Spotify, etc.), preserve the folder structure
-            # Only use MusicBrainz reorganization for single tracks or AllDebrid downloads
-            preserve_playlist = is_playlist or detected_source in [DownloadSource.YOUTUBE_MUSIC, DownloadSource.SPOTIFY]
+            preset_map = {
+                'optimal': AudioPreset.OPTIMAL,
+                'clarity': AudioPreset.CLARITY,
+                'bass_boost': AudioPreset.BASS_BOOST,
+                'warm': AudioPreset.WARM,
+                'bright': AudioPreset.BRIGHT,
+                'flat': AudioPreset.FLAT,
+            }
+            audio_preset = preset_map.get(preset, AudioPreset.OPTIMAL)
             
-            # Also check if temp_dir has a playlist-like structure (single subfolder with multiple files)
-            temp_subdirs = [d for d in Path(temp_dir).iterdir() if d.is_dir()]
-            if len(temp_subdirs) == 1:
-                # Single subfolder = likely a playlist
-                subdir_files = list(temp_subdirs[0].rglob('*'))
-                audio_count = sum(1 for f in subdir_files if f.is_file() and f.suffix.lower() in ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav', '.webm'])
-                if audio_count > 1:
-                    preserve_playlist = True
-                    add_job_log(job_id, f"🔍 Detected playlist structure: {temp_subdirs[0].name} with {audio_count} tracks", "info")
+            # Find all audio files
+            audio_extensions = ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav', '.webm']
+            audio_files = [f for f in Path(temp_dir).rglob('*') if f.is_file() and f.suffix.lower() in audio_extensions]
             
-            add_job_log(job_id, f"🔍 Final decision: preserve_playlist={preserve_playlist}", "info")
+            add_job_log(job_id, f"📁 Found {len(audio_files)} audio files", "info")
             
-            if preserve_playlist:
-                add_job_log(job_id, "📁 Playlist detected - preserving folder structure", "info")
-                add_job_log(job_id, f"🔍 Debug: enhance_audio={enhance_audio}, preset={preset}", "info")
-                
-                # Map preset string to enum
-                preset_map = {
-                    'optimal': AudioPreset.OPTIMAL,
-                    'clarity': AudioPreset.CLARITY,
-                    'bass_boost': AudioPreset.BASS_BOOST,
-                    'warm': AudioPreset.WARM,
-                    'bright': AudioPreset.BRIGHT,
-                    'flat': AudioPreset.FLAT,
-                }
-                audio_preset = preset_map.get(preset, AudioPreset.OPTIMAL)
-                
-                # Process files while preserving structure
-                output_base = Path(MUSIC_OUTPUT_PATH)
-                output_base.mkdir(parents=True, exist_ok=True)
-                
-                processed = 0
-                total = 0
-                
-                # Debug: List all files in temp_dir
-                all_files = list(Path(temp_dir).rglob('*'))
-                add_job_log(job_id, f"🔍 Debug: Found {len(all_files)} items in temp_dir", "info")
-                
-                # Find audio files
-                audio_extensions = ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav', '.webm']
-                audio_files = [f for f in all_files if f.is_file() and f.suffix.lower() in audio_extensions]
-                add_job_log(job_id, f"🔍 Debug: Found {len(audio_files)} audio files", "info")
-                
-                if audio_files:
-                    add_job_log(job_id, f"🔍 Debug: First file: {audio_files[0]}", "info")
-                
-                # Initialize audio enhancer if needed
-                enhancer = None
-                if enhance_audio:
-                    try:
-                        enhancer = AudioEnhancer()
-                        add_job_log(job_id, "✅ AudioEnhancer initialized", "info")
-                    except Exception as e:
-                        add_job_log(job_id, f"⚠️ Failed to initialize AudioEnhancer: {e}", "warning")
-                
-                for item in audio_files:
-                    total += 1
-                    # Preserve relative path structure
-                    rel_path = item.relative_to(temp_dir)
-                    dest_path = output_base / rel_path
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+            # Initialize enhancer if needed
+            enhancer = None
+            if enhance_audio:
+                try:
+                    enhancer = AudioEnhancer()
+                    add_job_log(job_id, f"✅ Audio enhancement enabled (preset: {preset})", "info")
+                except Exception as e:
+                    add_job_log(job_id, f"⚠️ Audio enhancement unavailable: {e}", "warning")
+            
+            output_base = Path(MUSIC_OUTPUT_PATH)
+            output_base.mkdir(parents=True, exist_ok=True)
+            
+            processed = 0
+            total = len(audio_files)
+            
+            for idx, audio_file in enumerate(audio_files, 1):
+                try:
+                    # Preserve folder structure from spotdl (playlist/album name)
+                    rel_path = audio_file.relative_to(temp_dir)
+                    output_path = output_base / rel_path
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
                     
-                    # Change extension for webm files
-                    if item.suffix.lower() == '.webm':
-                        dest_path = dest_path.with_suffix('.opus')
+                    # Get display name from filename
+                    display_name = audio_file.stem
                     
-                    try:
-                        if enhance_audio and enhancer:
-                            add_job_log(job_id, f"🎵 Enhancing ({total}/{len(audio_files)}): {item.name}", "info")
-                            success = enhancer.enhance_audio(str(item), str(dest_path), preset=audio_preset)
-                            
-                            if success:
-                                # Verify the output file has content
-                                if dest_path.exists() and dest_path.stat().st_size > 0:
-                                    processed += 1
-                                else:
-                                    # Enhancement created empty file, copy original instead
-                                    add_job_log(job_id, f"⚠️ Enhancement produced empty file, copying original: {item.name}", "warning")
-                                    if dest_path.exists():
-                                        dest_path.unlink()
-                                    shutil.copy2(str(item), str(dest_path))
-                                    processed += 1
-                            else:
-                                # Enhancement failed, copy original
-                                add_job_log(job_id, f"⚠️ Enhancement failed, copying original: {item.name}", "warning")
-                                shutil.copy2(str(item), str(dest_path))
-                                processed += 1
-                        else:
-                            add_job_log(job_id, f"📁 Copying ({total}/{len(audio_files)}): {item.name}", "info")
-                            shutil.copy2(str(item), str(dest_path))
-                            processed += 1
-                    except Exception as e:
-                        add_job_log(job_id, f"⚠️ Error processing {item.name}: {e}", "warning")
-                        # Still copy the file even if enhancement fails
-                        try:
-                            shutil.copy2(str(item), str(dest_path))
-                            processed += 1
-                        except Exception as copy_err:
-                            add_job_log(job_id, f"❌ Failed to copy {item.name}: {copy_err}", "error")
+                    # Process file (enhance or copy)
+                    if enhance_audio and enhancer:
+                        add_job_log(job_id, f"🎵 ({idx}/{total}) Enhancing: {display_name}", "info")
+                        success = enhancer.enhance_audio(str(audio_file), str(output_path), preset=audio_preset)
+                        if not success or not output_path.exists() or output_path.stat().st_size == 0:
+                            add_job_log(job_id, f"⚠️ Enhancement failed, copying original", "warning")
+                            shutil.copy2(str(audio_file), str(output_path))
+                    else:
+                        add_job_log(job_id, f"📁 ({idx}/{total}) {display_name}", "info")
+                        shutil.copy2(str(audio_file), str(output_path))
                     
-                    # Update progress
-                    progress = 50 + (total / len(audio_files)) * 50
-                    db.update_job_progress(job_id, progress=progress, processed_files=processed)
-                
-                db.update_job_status(job_id, status=JobStatus.COMPLETED)
-                db.update_job_progress(job_id, progress=100, processed_files=processed)
-                
-                with db.get_session() as session:
-                    job = session.query(Job).filter(Job.id == job_id).first()
-                    if job:
-                        job.total_files = total
-                        session.commit()
-                
-                enhancement_status = "with audio enhancement" if enhance_audio and enhancer else "without enhancement"
-                add_job_log(job_id, f"✅ Processed {processed}/{total} music files ({enhancement_status}, playlist structure preserved)", "success")
+                    processed += 1
+                    
+                    # Update progress (50-95% for organizing)
+                    progress = 50 + (idx / total) * 45
+                    db.update_job_progress(job_id, progress=progress, current_file=display_name, processed_files=processed)
+                    
+                except Exception as e:
+                    add_job_log(job_id, f"❌ Error processing {audio_file.name}: {e}", "error")
             
-            elif not preserve_playlist and (enhance_audio or lookup_metadata):
-                # Use full music organizer for AllDebrid or single tracks
-                preset_map = {
-                    'optimal': AudioPreset.OPTIMAL,
-                    'clarity': AudioPreset.CLARITY,
-                    'bass_boost': AudioPreset.BASS_BOOST,
-                    'warm': AudioPreset.WARM,
-                    'bright': AudioPreset.BRIGHT,
-                    'flat': AudioPreset.FLAT,
-                }
-                audio_preset = preset_map.get(preset, AudioPreset.OPTIMAL)
-                
-                # Initialize organizer
-                organizer = MusicLibraryOrganizer(
-                    musicbrainz_client_id=MUSICBRAINZ_CLIENT_ID,
-                    musicbrainz_client_secret=MUSICBRAINZ_CLIENT_SECRET,
-                    use_musicbrainz=lookup_metadata
-                )
-                
-                # Process downloaded files
-                results = organizer.organize_directory(
-                    temp_dir,
-                    MUSIC_OUTPUT_PATH,
-                    enhance_audio=enhance_audio,
-                    audio_preset=audio_preset,
-                    output_format=None,  # Keep format from download
-                    lookup_metadata=lookup_metadata
-                )
-                
-                db.update_job_status(job_id, status=JobStatus.COMPLETED)
-                db.update_job_progress(job_id, progress=100, processed_files=results['success'])
-                
-                with db.get_session() as session:
-                    job = session.query(Job).filter(Job.id == job_id).first()
-                    if job:
-                        job.total_files = results['total']
-                        session.commit()
-                
-                add_job_log(job_id, f"✅ Processed {results['success']}/{results['total']} music files", "success")
-            else:
-                # Just move files to output
-                
-                output_path = Path(MUSIC_OUTPUT_PATH)
-                output_path.mkdir(parents=True, exist_ok=True)
-                
-                moved = 0
-                for item in Path(temp_dir).rglob('*'):
-                    if item.is_file():
-                        dest = output_path / item.name
-                        shutil.move(str(item), str(dest))
-                        moved += 1
-                
-                db.update_job_status(job_id, status=JobStatus.COMPLETED)
-                db.update_job_progress(job_id, progress=100, processed_files=moved)
-                add_job_log(job_id, f"✅ Moved {moved} files to {MUSIC_OUTPUT_PATH}", "success")
+            # Complete
+            db.update_job_status(job_id, status=JobStatus.COMPLETED)
+            db.update_job_progress(job_id, progress=100, processed_files=processed)
+            
+            with db.get_session() as session:
+                job = session.query(Job).filter(Job.id == job_id).first()
+                if job:
+                    job.total_files = total
+                    session.commit()
+            
                 
     except Exception as e:
-        logger.error(f"Music download error: {e}")
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Music download error: {e}\n{error_details}")
         db.update_job_status(job_id, status=JobStatus.FAILED, error_message=str(e))
         add_job_log(job_id, f"❌ Error: {str(e)}", "error")
+        add_job_log(job_id, f"📋 Details: {error_details[:500]}", "error")
 
 
 @app.post("/api/v1/music/download")
@@ -1877,6 +2125,297 @@ async def update_music_tools():
     except Exception as e:
         logger.error(f"Error updating tools: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# NAS/SMB API ENDPOINTS
+# ============================================================================
+
+# NAS Configuration from environment
+NAS_CONFIGS = {}
+
+def init_nas_configs():
+    """Initialize NAS configurations from environment variables."""
+    global NAS_CONFIGS
+    
+    # Lharmony (Synology) - folder names: tv, malayalam tv shows
+    if os.getenv("LHARMONY_HOST"):
+        NAS_CONFIGS["Lharmony"] = {
+            "name": "Lharmony",
+            "host": os.getenv("LHARMONY_HOST"),
+            "username": os.getenv("LHARMONY_USERNAME", ""),
+            "share": os.getenv("LHARMONY_SHARE", "data"),
+            "media_path": os.getenv("LHARMONY_MEDIA_PATH", "/media"),
+            "mount_point": f"/Volumes/{os.getenv('LHARMONY_SHARE', 'data')}",
+            "type": "synology",
+            "categories": ["movies", "malayalam movies", "bollywood movies", "tv", "malayalam tv shows", "music"]
+        }
+    
+    # Streamwave (Unraid) - folder names: tv-shows, malayalam-tv-shows
+    if os.getenv("STREAMWAVE_HOST"):
+        NAS_CONFIGS["Streamwave"] = {
+            "name": "Streamwave",
+            "host": os.getenv("STREAMWAVE_HOST"),
+            "username": os.getenv("STREAMWAVE_USERNAME", ""),
+            "share": os.getenv("STREAMWAVE_SHARE", "Data-Streamwave"),
+            "media_path": os.getenv("STREAMWAVE_MEDIA_PATH", "/media"),
+            "mount_point": f"/Volumes/{os.getenv('STREAMWAVE_SHARE', 'Data-Streamwave')}",
+            "type": "unraid",
+            "categories": ["movies", "malayalam movies", "bollywood movies", "tv-shows", "malayalam-tv-shows"]
+        }
+
+# Initialize on module load
+init_nas_configs()
+
+
+class NASCopyRequest(BaseModel):
+    nas_name: str
+    source_path: str
+    category: str
+    move_file: bool = False
+
+
+class NASTestRequest(BaseModel):
+    nas_name: str
+
+
+@app.get("/api/v1/nas/list")
+async def list_nas():
+    """List all configured NAS locations."""
+    nas_list = []
+    
+    for name, config in NAS_CONFIGS.items():
+        mount_point = Path(config["mount_point"])
+        is_mounted = mount_point.exists() and mount_point.is_mount()
+        
+        nas_list.append({
+            "name": config["name"],
+            "host": config["host"],
+            "type": config["type"],
+            "mounted": is_mounted,
+            "mount_point": config["mount_point"],
+            "categories": config["categories"]
+        })
+    
+    return {
+        "success": True,
+        "nas_locations": nas_list,
+        "count": len(nas_list)
+    }
+
+
+@app.get("/api/v1/nas/{nas_name}/status")
+async def get_nas_status(nas_name: str):
+    """Get status of a specific NAS."""
+    if nas_name not in NAS_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"NAS not found: {nas_name}")
+    
+    config = NAS_CONFIGS[nas_name]
+    mount_point = Path(config["mount_point"])
+    is_mounted = mount_point.exists() and mount_point.is_mount()
+    
+    # Get disk space if mounted
+    disk_info = None
+    if is_mounted:
+        try:
+            import shutil
+            total, used, free = shutil.disk_usage(mount_point)
+            disk_info = {
+                "total_gb": round(total / (1024**3), 2),
+                "used_gb": round(used / (1024**3), 2),
+                "free_gb": round(free / (1024**3), 2),
+                "used_percent": round((used / total) * 100, 1)
+            }
+        except Exception:
+            pass
+    
+    # Check categories
+    categories_status = {}
+    if is_mounted:
+        media_base = mount_point / config["media_path"].lstrip('/')
+        for cat in config["categories"]:
+            cat_path = media_base / cat
+            categories_status[cat] = {
+                "path": str(cat_path),
+                "exists": cat_path.exists()
+            }
+    
+    return {
+        "success": True,
+        "nas": {
+            "name": config["name"],
+            "host": config["host"],
+            "type": config["type"],
+            "mounted": is_mounted,
+            "mount_point": config["mount_point"],
+            "disk": disk_info,
+            "categories": categories_status
+        }
+    }
+
+
+@app.post("/api/v1/nas/test")
+async def test_nas_connection(request: NASTestRequest):
+    """Test NAS connection."""
+    if request.nas_name not in NAS_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"NAS not found: {request.nas_name}")
+    
+    config = NAS_CONFIGS[request.nas_name]
+    mount_point = Path(config["mount_point"])
+    
+    # Check if mounted
+    if not mount_point.exists() or not mount_point.is_mount():
+        return {
+            "success": False,
+            "message": f"{request.nas_name} is not mounted. Mount it first using Finder or mount command.",
+            "mounted": False
+        }
+    
+    # Check media path
+    media_base = mount_point / config["media_path"].lstrip('/')
+    if not media_base.exists():
+        return {
+            "success": False,
+            "message": f"Media path not found: {media_base}",
+            "mounted": True
+        }
+    
+    return {
+        "success": True,
+        "message": f"✅ {request.nas_name} is connected and ready!",
+        "mounted": True,
+        "media_path": str(media_base)
+    }
+
+
+@app.post("/api/v1/nas/copy")
+async def copy_to_nas(request: NASCopyRequest, background_tasks: BackgroundTasks):
+    """Copy a file to NAS."""
+    if request.nas_name not in NAS_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"NAS not found: {request.nas_name}")
+    
+    config = NAS_CONFIGS[request.nas_name]
+    source_path = Path(request.source_path)
+    
+    if not source_path.exists():
+        raise HTTPException(status_code=404, detail=f"Source file not found: {source_path}")
+    
+    # Check if NAS is mounted
+    mount_point = Path(config["mount_point"])
+    if not mount_point.exists() or not mount_point.is_mount():
+        raise HTTPException(status_code=400, detail=f"{request.nas_name} is not mounted")
+    
+    # Validate category
+    if request.category not in config["categories"]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid category '{request.category}' for {request.nas_name}. Valid: {config['categories']}"
+        )
+    
+    # Build destination path
+    media_base = mount_point / config["media_path"].lstrip('/')
+    category_path = media_base / request.category
+    
+    # Create category folder if needed
+    category_path.mkdir(parents=True, exist_ok=True)
+    
+    # For movies, create subfolder
+    if "movie" in request.category.lower():
+        folder_name = source_path.stem
+        dest_folder = category_path / folder_name
+        dest_folder.mkdir(exist_ok=True)
+        dest_path = dest_folder / source_path.name
+    else:
+        dest_path = category_path / source_path.name
+    
+    try:
+        if request.move_file:
+            shutil.move(str(source_path), str(dest_path))
+            action = "Moved"
+        else:
+            shutil.copy2(str(source_path), str(dest_path))
+            action = "Copied"
+        
+        logger.info(f"✅ {action} {source_path.name} to {request.nas_name}/{request.category}")
+        
+        return {
+            "success": True,
+            "message": f"✅ {action} to {request.nas_name}/{request.category}",
+            "destination": str(dest_path),
+            "nas": request.nas_name,
+            "category": request.category
+        }
+    except Exception as e:
+        logger.error(f"❌ Copy failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/nas/{nas_name}/categories")
+async def get_nas_categories(nas_name: str):
+    """Get available categories for a NAS."""
+    if nas_name not in NAS_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"NAS not found: {nas_name}")
+    
+    config = NAS_CONFIGS[nas_name]
+    
+    return {
+        "success": True,
+        "nas": nas_name,
+        "categories": config["categories"]
+    }
+
+
+@app.get("/api/v1/nas/{nas_name}/browse/{category}")
+async def browse_nas_category(nas_name: str, category: str, limit: int = Query(50, ge=1, le=200)):
+    """Browse files in a NAS category."""
+    if nas_name not in NAS_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"NAS not found: {nas_name}")
+    
+    config = NAS_CONFIGS[nas_name]
+    
+    if category not in config["categories"]:
+        raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
+    
+    mount_point = Path(config["mount_point"])
+    if not mount_point.exists() or not mount_point.is_mount():
+        raise HTTPException(status_code=400, detail=f"{nas_name} is not mounted")
+    
+    category_path = mount_point / config["media_path"].lstrip('/') / category
+    
+    if not category_path.exists():
+        return {
+            "success": True,
+            "nas": nas_name,
+            "category": category,
+            "path": str(category_path),
+            "files": [],
+            "count": 0
+        }
+    
+    files = []
+    for item in sorted(category_path.iterdir())[:limit]:
+        if item.name.startswith('.'):
+            continue
+        
+        file_info = {
+            "name": item.name,
+            "is_dir": item.is_dir(),
+            "path": str(item)
+        }
+        
+        if item.is_file():
+            file_info["size_mb"] = round(item.stat().st_size / (1024 * 1024), 2)
+        
+        files.append(file_info)
+    
+    return {
+        "success": True,
+        "nas": nas_name,
+        "category": category,
+        "path": str(category_path),
+        "files": files,
+        "count": len(files)
+    }
 
 
 # Global tool updater instance for auto-updates

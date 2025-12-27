@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import UniverseBackground from './components/UniverseBackground';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import FileUpload from './components/FileUpload';
 import OperationPanel from './components/OperationPanel';
 import StatusCard from './components/StatusCard';
@@ -12,6 +13,7 @@ import AllDebridPanel from './components/AllDebridPanel';
 import MusicOrganizer from './components/MusicOrganizer';
 import MusicDownloadPanel from './components/MusicDownloadPanel';
 import MusicActivityDashboard from './components/MusicActivityDashboard';
+import NASPanel from './components/NASPanel';
 import { Card, CardContent } from './components/ui/Card';
 import { FolderTree, Music, Music2, Zap, CheckCircle, XCircle, Film, LucideIcon } from 'lucide-react';
 import type { ProcessResult, UploadResult } from './types';
@@ -55,44 +57,33 @@ const App: React.FC = () => {
 
         <main className="relative container mx-auto px-4 py-8 max-w-7xl flex-1">
         {/* Hero Section */}
-        <div className="mb-8 text-center animate-fade-up">
-          <h2 className="text-4xl md:text-5xl font-bold mb-4 text-white">
-            Media Organization{' '}
-            <span className="text-gradient-animated">Made Simple</span>
+        <div className="mb-10 text-center animate-fade-up">
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 text-white hero-title">
+            <span className="hero-title-word">Media</span>{' '}
+            <span className="hero-title-word">Organization</span>{' '}
+            <span className="hero-title-word hero-gradient-text">Made Simple</span>
           </h2>
-          <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+          <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto hero-subtitle">
             Organize movies, series & music for Plex/Jellyfin with metadata lookup and audio enhancement
           </p>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex justify-center mb-8 animate-fade-up">
-          <div className="inline-flex p-1 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
+        {/* Tab Navigation - Bigger & Cooler */}
+        <div className="flex justify-center mb-10 animate-fade-up">
+          <div className="tab-toggle-container">
             <button
               onClick={() => setActiveTab('video')}
-              className={`
-                flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300
-                ${activeTab === 'video'
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg shadow-purple-500/25'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }
-              `}
+              className={`tab-toggle-btn ${activeTab === 'video' ? 'active video' : ''}`}
             >
-              <Film className="h-5 w-5" />
-              Video
+              <Film className={`h-6 w-6 tab-toggle-icon ${activeTab === 'video' ? 'text-white' : ''}`} />
+              <span>Video</span>
             </button>
             <button
               onClick={() => setActiveTab('music')}
-              className={`
-                flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300
-                ${activeTab === 'music'
-                  ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-lg shadow-pink-500/25'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }
-              `}
+              className={`tab-toggle-btn ${activeTab === 'music' ? 'active music' : ''}`}
             >
-              <Music className="h-5 w-5" />
-              Music
+              <Music className={`h-6 w-6 tab-toggle-icon ${activeTab === 'music' ? 'text-white' : ''}`} />
+              <span>Music</span>
             </button>
           </div>
         </div>
@@ -141,6 +132,7 @@ const App: React.FC = () => {
                 <OperationPanel onProcessComplete={handleProcessComplete} />
               </div>
               <div className="space-y-6">
+                <NASPanel mediaType="video" />
                 <StatusCard />
               </div>
             </div>
@@ -240,6 +232,7 @@ const App: React.FC = () => {
                 <MusicOrganizer />
               </div>
               <div className="space-y-6">
+                <NASPanel mediaType="audio" />
                 <StatusCard />
                 <LogViewer />
               </div>
@@ -247,6 +240,9 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+      
+      {/* Footer */}
+      <Footer />
     </div>
     </>
   );
