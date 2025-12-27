@@ -126,10 +126,10 @@ const App: React.FC = () => {
             {/* Main Content Grid */}
             <div className="grid lg:grid-cols-3 gap-6 mb-8 animate-fade-up">
               <div className="lg:col-span-2 space-y-6">
-                <LogViewer />
                 <AllDebridPanel />
-                <FileUpload onUploadComplete={handleUploadComplete} />
                 <OperationPanel onProcessComplete={handleProcessComplete} />
+                <LogViewer />
+                <FileUpload onUploadComplete={handleUploadComplete} />
               </div>
               <div className="space-y-6">
                 <NASPanel mediaType="video" />
@@ -230,11 +230,11 @@ const App: React.FC = () => {
               <div className="lg:col-span-2 space-y-6">
                 <MusicDownloadPanel />
                 <MusicOrganizer />
+                <LogViewer />
               </div>
               <div className="space-y-6">
                 <NASPanel mediaType="audio" />
                 <StatusCard />
-                <LogViewer />
               </div>
             </div>
           </div>
