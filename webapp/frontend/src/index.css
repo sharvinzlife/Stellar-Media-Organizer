@@ -1,5 +1,6 @@
-/* Import font FIRST */
+/* Import fonts FIRST */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -1522,10 +1523,6 @@ html, body {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
 }
-
-/* Press Start 2P font fallback */
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
-
 
 /* ========== ENHANCED TV GLITCH ANIMATIONS ========== */
 @keyframes tv-shake {

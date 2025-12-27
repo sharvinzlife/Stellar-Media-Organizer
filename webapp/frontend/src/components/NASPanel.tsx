@@ -104,10 +104,15 @@ const NASPanel: React.FC<NASPanelProps> = ({ mediaType = 'video' }) => {
   const fetchNASStatus = async (nasName: string) => {
     try {
       const response = await api.get(`/nas/${nasName}/status`);
+      const statusData = response.data.nas;
       setNasStatuses(prev => ({
         ...prev,
-        [nasName]: response.data.nas
+        [nasName]: statusData
       }));
+      // Also update nasLocations with mounted status
+      setNasLocations(prev => prev.map(nas => 
+        nas.name === nasName ? { ...nas, mounted: statusData.mounted } : nas
+      ));
     } catch (error) {
       console.error(`Failed to fetch NAS status for ${nasName}:`, error);
     }

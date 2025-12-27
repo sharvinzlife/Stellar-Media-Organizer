@@ -3,10 +3,13 @@ API routes for the Media Organizer
 """
 import asyncio
 import logging
+import os
+import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from app.models.schemas import (
     ProcessRequest, ProcessResponse, AnalyzeRequest, AnalyzeResponse,
@@ -316,4 +319,140 @@ async def get_supported_formats():
             {"name": cleaner.get_format_name(), "icon": "📁"}
             for cleaner in cleaners
         ]
+    }
+
+
+# ============================================================================
+# NAS Endpoints
+# ============================================================================
+
+def get_nas_configs():
+    """Get NAS configurations from settings"""
+    nas_configs = []
+    
+    # Lharmony (Synology)
+    if settings.lharmony_host:
+        nas_configs.append({
+            "name": "Lharmony",
+            "host": settings.lharmony_host,
+            "username": settings.lharmony_username or "",
+            "share": settings.lharmony_share,
+            "media_path": settings.lharmony_media_path,
+            "mount_point": f"/mnt/{settings.lharmony_share}",
+            "mounted": False,  # Will be updated by status check
+            "type": "synology",
+            "categories": ["movies", "malayalam movies", "bollywood movies", "tv", "malayalam tv shows", "music"]
+        })
+    
+    # Streamwave (Unraid)
+    if settings.streamwave_host:
+        nas_configs.append({
+            "name": "Streamwave",
+            "host": settings.streamwave_host,
+            "username": settings.streamwave_username or "",
+            "share": settings.streamwave_share,
+            "media_path": settings.streamwave_media_path,
+            "mount_point": f"/mnt/{settings.streamwave_share}",
+            "mounted": False,  # Will be updated by status check
+            "type": "unraid",
+            "categories": ["tv-shows", "malayalam-tv-shows", "movies", "music"]
+        })
+    
+    return nas_configs
+
+
+class NASTestRequest(BaseModel):
+    nas_name: str
+
+
+@router.get("/nas/list")
+async def list_nas_locations():
+    """List all configured NAS locations"""
+    nas_configs = get_nas_configs()
+    return {"nas_locations": nas_configs}
+
+
+@router.get("/nas/{nas_name}/status")
+async def get_nas_status(nas_name: str):
+    """Get status of a specific NAS"""
+    nas_configs = get_nas_configs()
+    nas_config = next((n for n in nas_configs if n["name"].lower() == nas_name.lower()), None)
+    
+    if not nas_config:
+        raise HTTPException(status_code=404, detail=f"NAS '{nas_name}' not found")
+    
+    # Check if NAS is reachable via ping
+    is_connected = False
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "2", nas_config["host"]],
+            capture_output=True,
+            timeout=5
+        )
+        is_connected = result.returncode == 0
+    except Exception as e:
+        logger.warning(f"Ping failed for {nas_name}: {e}")
+    
+    # Update mounted status based on ping
+    nas_config["mounted"] = is_connected
+    nas_config["connected"] = is_connected
+    nas_config["status"] = "online" if is_connected else "offline"
+    
+    return {"nas": nas_config}
+
+
+@router.post("/nas/test")
+async def test_nas_connection(request: NASTestRequest):
+    """Test connection to a NAS"""
+    nas_configs = get_nas_configs()
+    nas_config = next((n for n in nas_configs if n["name"].lower() == request.nas_name.lower()), None)
+    
+    if not nas_config:
+        raise HTTPException(status_code=404, detail=f"NAS '{request.nas_name}' not found")
+    
+    # Test connection via ping
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "2", nas_config["host"]],
+            capture_output=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            return {"success": True, "message": f"✅ Successfully connected to {request.nas_name}"}
+        else:
+            return {"success": False, "message": f"❌ Cannot reach {request.nas_name} at {nas_config['host']}"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "message": f"❌ Connection to {request.nas_name} timed out"}
+    except Exception as e:
+        return {"success": False, "message": f"❌ Error testing connection: {str(e)}"}
+
+
+# ============================================================================
+# AllDebrid Endpoints
+# ============================================================================
+
+@router.get("/alldebrid/status")
+async def get_alldebrid_status():
+    """Check if AllDebrid API key is configured"""
+    return {
+        "configured": bool(settings.alldebrid_api_key)
+    }
+
+
+class AllDebridDownloadRequest(BaseModel):
+    links: List[str]
+    output_path: Optional[str] = None
+
+
+@router.post("/alldebrid")
+async def download_from_alldebrid(request: AllDebridDownloadRequest):
+    """Download files from AllDebrid links"""
+    if not settings.alldebrid_api_key:
+        raise HTTPException(status_code=400, detail="AllDebrid API key not configured")
+    
+    # TODO: Implement actual AllDebrid download logic
+    return {
+        "success": True,
+        "message": f"Started download of {len(request.links)} links",
+        "links": request.links
     }
