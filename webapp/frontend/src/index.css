@@ -1598,3 +1598,99 @@ html, body {
   background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   animation: noise 0.15s steps(5) infinite;
 }
+
+
+/* ========== JUKEBOX ANIMATIONS ========== */
+.jukebox-container {
+  position: relative;
+  transition: transform 0.3s ease;
+}
+
+.jukebox-container:hover {
+  transform: scale(1.02);
+}
+
+.jukebox-container::before {
+  content: '';
+  position: absolute;
+  inset: -20px;
+  background: radial-gradient(ellipse at center, rgba(168, 85, 247, 0.15), transparent 70%);
+  border-radius: 40px;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.jukebox-container:hover::before {
+  opacity: 1;
+  animation: jukebox-glow 2s ease-in-out infinite;
+}
+
+@keyframes jukebox-glow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+/* Vinyl record shine animation */
+@keyframes vinyl-shine {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Cassette tape wobble */
+@keyframes cassette-wobble {
+  0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
+  25% { transform: translate(-50%, -50%) rotate(1deg); }
+  75% { transform: translate(-50%, -50%) rotate(-1deg); }
+}
+
+/* Neon text flicker */
+@keyframes neon-flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    text-shadow: 
+      0 0 10px rgba(236, 72, 153, 0.8),
+      0 0 20px rgba(236, 72, 153, 0.6),
+      0 0 30px rgba(168, 85, 247, 0.4),
+      0 0 40px rgba(168, 85, 247, 0.2);
+  }
+  20%, 24%, 55% {
+    text-shadow: none;
+  }
+}
+
+.neon-text {
+  animation: neon-flicker 3s infinite;
+}
+
+/* Audio bars animation */
+@keyframes audio-bar {
+  0%, 100% { height: 4px; }
+  50% { height: 16px; }
+}
+
+.audio-bar {
+  animation: audio-bar 0.5s ease-in-out infinite;
+}
+
+.audio-bar:nth-child(1) { animation-delay: 0ms; }
+.audio-bar:nth-child(2) { animation-delay: 100ms; }
+.audio-bar:nth-child(3) { animation-delay: 200ms; }
+.audio-bar:nth-child(4) { animation-delay: 300ms; }
+.audio-bar:nth-child(5) { animation-delay: 400ms; }
+
+/* Coin slot shine */
+@keyframes coin-shine {
+  0% { left: -100%; }
+  50%, 100% { left: 100%; }
+}
+
+.coin-slot::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: coin-shine 3s ease-in-out infinite;
+}
