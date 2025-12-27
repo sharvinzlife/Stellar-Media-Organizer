@@ -1525,3 +1525,76 @@ html, body {
 
 /* Press Start 2P font fallback */
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
+
+
+/* ========== ENHANCED TV GLITCH ANIMATIONS ========== */
+@keyframes tv-shake {
+  0%, 100% { transform: translate(0); }
+  10% { transform: translate(-2px, 1px); }
+  20% { transform: translate(2px, -1px); }
+  30% { transform: translate(-1px, 2px); }
+  40% { transform: translate(1px, -2px); }
+  50% { transform: translate(-2px, 1px); }
+  60% { transform: translate(2px, 1px); }
+  70% { transform: translate(-1px, -1px); }
+  80% { transform: translate(1px, 2px); }
+  90% { transform: translate(-1px, -2px); }
+}
+
+@keyframes intensive-glitch {
+  0% { transform: translate(0) skewX(0); filter: hue-rotate(0deg); }
+  10% { transform: translate(-5px, 2px) skewX(-2deg); filter: hue-rotate(90deg); }
+  20% { transform: translate(5px, -2px) skewX(2deg); filter: hue-rotate(180deg); }
+  30% { transform: translate(-3px, 3px) skewX(-1deg); filter: hue-rotate(270deg); }
+  40% { transform: translate(3px, -3px) skewX(1deg); filter: hue-rotate(360deg); }
+  50% { transform: translate(-2px, 1px) skewX(-2deg); filter: hue-rotate(45deg); }
+  60% { transform: translate(2px, -1px) skewX(2deg); filter: hue-rotate(135deg); }
+  70% { transform: translate(-1px, 2px) skewX(-1deg); filter: hue-rotate(225deg); }
+  80% { transform: translate(1px, -2px) skewX(1deg); filter: hue-rotate(315deg); }
+  90% { transform: translate(0, 1px) skewX(0); filter: hue-rotate(0deg); }
+  100% { transform: translate(0) skewX(0); filter: hue-rotate(0deg); }
+}
+
+@keyframes text-intensive {
+  0%, 100% { transform: translate(0); opacity: 1; }
+  5% { transform: translate(-5px, 0); opacity: 0.8; }
+  10% { transform: translate(5px, 0); opacity: 0.9; }
+  15% { transform: translate(-3px, 2px); opacity: 0.7; }
+  20% { transform: translate(3px, -2px); opacity: 1; }
+  25% { transform: translate(-2px, 0); opacity: 0.8; }
+  30% { transform: translate(2px, 0); opacity: 0.9; }
+  35% { transform: translate(0, 3px); opacity: 0.7; }
+  40% { transform: translate(0, -3px); opacity: 1; }
+  45% { transform: translate(-4px, 1px); opacity: 0.8; }
+  50% { transform: translate(4px, -1px); opacity: 0.9; }
+}
+
+@keyframes noise {
+  0%, 100% { background-position: 0 0; }
+  10% { background-position: -5% -10%; }
+  20% { background-position: -15% 5%; }
+  30% { background-position: 7% -25%; }
+  40% { background-position: 20% 25%; }
+  50% { background-position: -25% 10%; }
+  60% { background-position: 15% 5%; }
+  70% { background-position: 0% 15%; }
+  80% { background-position: 25% 35%; }
+  90% { background-position: -10% 10%; }
+}
+
+.animate-tv-shake {
+  animation: tv-shake 0.2s ease-in-out;
+}
+
+.animate-intensive-glitch {
+  animation: intensive-glitch 0.2s ease-in-out;
+}
+
+.animate-text-intensive {
+  animation: text-intensive 0.2s ease-in-out;
+}
+
+.animate-noise {
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  animation: noise 0.15s steps(5) infinite;
+}
