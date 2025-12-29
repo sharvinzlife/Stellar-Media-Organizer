@@ -231,6 +231,7 @@ class AudioEnhancer:
         """
         Fix V.A./Various Artists in ALBUMARTIST tag.
         Plex uses ALBUMARTIST for grouping - we replace V.A. with album name.
+        Also ensures TRACKNUMBER is properly set.
         """
         try:
             if not MUTAGEN_AVAILABLE:
@@ -243,15 +244,32 @@ class AudioEnhancer:
             album_artist = str(audio.get('albumartist', [''])[0])
             album = str(audio.get('album', [''])[0])
             
+            modified = False
+            
             # Check if album_artist is V.A. or similar
             va_patterns = ['v.a.', 'va', 'various artists', 'various']
             if album_artist.lower().strip() in va_patterns:
                 # Replace with album name
                 if album:
                     audio['albumartist'] = album
-                    audio.save()
                     logger.debug(f"Fixed ALBUMARTIST: V.A. -> {album}")
-                    return True
+                    modified = True
+            
+            # Ensure TRACKNUMBER is set (sometimes gets lost in processing)
+            if 'tracknumber' not in audio or not audio['tracknumber']:
+                # Try to extract from filename (e.g., "01 - Artist - Title.flac")
+                import re
+                filename = Path(file_path).stem
+                track_match = re.match(r'^(\d+)\s*-', filename)
+                if track_match:
+                    track_num = track_match.group(1)
+                    audio['tracknumber'] = track_num
+                    logger.debug(f"Fixed TRACKNUMBER: {track_num}")
+                    modified = True
+            
+            if modified:
+                audio.save()
+                return True
             
             return False
         except Exception as e:
@@ -350,6 +368,7 @@ class AudioEnhancer:
             '-i', input_path,
             '-filter_complex', filter_complex,
             '-map', '[out]',
+            '-map_metadata', '0',      # Copy all metadata from input
             '-c:a', 'flac',           # Lossless FLAC codec
             '-sample_fmt', 's32',      # 32-bit for quality
             output_path
