@@ -28,7 +28,7 @@ except ImportError:
 from core.nas_transfer import NASTransfer
 
 
-def fix_file_metadata(local_path: Path) -> bool:
+def fix_file_metadata(local_path: Path, force_album: str = None) -> bool:
     """Fix metadata in a single file"""
     try:
         audio = mutagen.File(str(local_path), easy=True)
@@ -40,12 +40,25 @@ def fix_file_metadata(local_path: Path) -> bool:
         
         modified = False
         
-        # Fix Various Artists
+        # Force album name for playlist compilations
+        if force_album and album != force_album:
+            audio['album'] = force_album
+            print(f"  ✓ ALBUM: {album} → {force_album}")
+            modified = True
+        
+        # Set ALBUMARTIST to playlist name for compilations
+        if force_album and album_artist != force_album:
+            audio['albumartist'] = force_album
+            print(f"  ✓ ALBUMARTIST: {album_artist} → {force_album}")
+            modified = True
+        
+        # Fix Various Artists (legacy)
         va_patterns = ['v.a.', 'va', 'various artists', 'various']
         if album_artist.lower().strip() in va_patterns:
-            if album:
-                audio['albumartist'] = album
-                print(f"  ✓ ALBUMARTIST: Various Artists → {album}")
+            target = force_album if force_album else album
+            if target:
+                audio['albumartist'] = target
+                print(f"  ✓ ALBUMARTIST: Various Artists → {target}")
                 modified = True
         
         # Fix track number from filename
@@ -71,8 +84,11 @@ def fix_file_metadata(local_path: Path) -> bool:
 
 def main():
     nas_path = "smb://lharmony-nas.local/data/media/music/Hot Hits USA/"
+    playlist_name = "Hot Hits USA"  # Force all tracks to this album name
     
-    print("🔧 Fixing metadata on NAS: Hot Hits USA")
+    print(f"🔧 Fixing metadata on NAS: {playlist_name}")
+    print("=" * 60)
+    print(f"Setting ALBUM and ALBUMARTIST to: {playlist_name}")
     print("=" * 60)
     
     # Initialize NAS transfer
@@ -146,7 +162,7 @@ def main():
                     continue
                 
                 # Fix metadata
-                if fix_file_metadata(local_file):
+                if fix_file_metadata(local_file, force_album=playlist_name):
                     # Upload back to NAS
                     upload_cmd = [
                         'smbclient',
