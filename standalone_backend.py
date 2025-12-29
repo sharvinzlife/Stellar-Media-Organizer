@@ -20,6 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
+# Load environment variables from config.env
+from dotenv import load_dotenv
+load_dotenv("config.env")
+
 # Import database for job tracking
 from core.database import get_db, Job, JobStatus, JobType
 

@@ -694,29 +694,55 @@ class MusicDownloader:
             
             self._log(f"   🖼️ Extracting cover image...")
             
-            # spotdl embeds cover art in the audio files, extract from first track
+            # Method 1: Extract from embedded cover art in audio files
             audio_files = sorted(playlist_folder.glob('*.flac')) or sorted(playlist_folder.glob('*.mp3'))
             
-            if not audio_files:
-                self._log(f"   ⚠️ No audio files found to extract cover from", "warning")
-                return
-            
-            first_track = audio_files[0]
-            
-            # Use ffmpeg to extract embedded cover art
-            try:
-                result = subprocess.run(
-                    ['ffmpeg', '-i', str(first_track), '-an', '-vcodec', 'copy', str(cover_path)],
-                    capture_output=True,
-                    timeout=30
-                )
+            if audio_files:
+                first_track = audio_files[0]
                 
-                if result.returncode == 0 and cover_path.exists():
-                    self._log(f"   🖼️ Saved cover: cover.jpg", "success")
-                else:
-                    self._log(f"   ⚠️ Could not extract cover from audio file", "warning")
+                # Try extracting with ffmpeg
+                try:
+                    result = subprocess.run(
+                        ['ffmpeg', '-i', str(first_track), '-an', '-vcodec', 'copy', str(cover_path), '-y'],
+                        capture_output=True,
+                        timeout=30
+                    )
+                    
+                    if result.returncode == 0 and cover_path.exists() and cover_path.stat().st_size > 0:
+                        self._log(f"   🖼️ Saved cover: cover.jpg ({cover_path.stat().st_size} bytes)", "success")
+                        return
+                except Exception as e:
+                    self._log(f"   ⚠️ FFmpeg extraction failed: {e}", "warning")
+            
+            # Method 2: Try using mutagen to extract cover
+            try:
+                import mutagen
+                from mutagen.flac import FLAC, Picture
+                from mutagen.mp3 import MP3
+                from mutagen.id3 import ID3, APIC
+                
+                if audio_files:
+                    audio = mutagen.File(str(audio_files[0]))
+                    
+                    # FLAC files
+                    if isinstance(audio, FLAC) and audio.pictures:
+                        with open(cover_path, 'wb') as f:
+                            f.write(audio.pictures[0].data)
+                        self._log(f"   🖼️ Saved cover from FLAC: cover.jpg", "success")
+                        return
+                    
+                    # MP3 files
+                    if isinstance(audio, MP3):
+                        for tag in audio.tags.values():
+                            if isinstance(tag, APIC):
+                                with open(cover_path, 'wb') as f:
+                                    f.write(tag.data)
+                                self._log(f"   🖼️ Saved cover from MP3: cover.jpg", "success")
+                                return
             except Exception as e:
-                self._log(f"   ⚠️ Cover extraction failed: {e}", "warning")
+                self._log(f"   ⚠️ Mutagen extraction failed: {e}", "warning")
+            
+            self._log(f"   ⚠️ Could not extract cover - no embedded art found", "warning")
                 
         except Exception as e:
             self._log(f"   ⚠️ Cover extraction error: {e}", "warning")
