@@ -159,7 +159,7 @@ class MusicDownloader:
     
     def __init__(
         self,
-        output_dir: str = "/Users/sharvin/Documents/Music",
+        output_dir: str = "",
         alldebrid_api_key: str = "",
         progress_callback: Optional[Callable[[str, str], None]] = None
     ):
@@ -571,7 +571,7 @@ class MusicDownloader:
         urls: List[str],
         audio_format: str = "flac"
     ) -> DownloadResult:
-        """Download from Spotify using spotdl"""
+        """Download from Spotify using spotdl (Python 3.12 venv)"""
         if not self.tools_available["spotdl"]:
             return DownloadResult(False, DownloadSource.SPOTIFY, [],
                                 "spotdl not installed", ["Install with: pip install spotdl"])
@@ -590,26 +590,35 @@ class MusicDownloader:
         # Handle 'original' format - spotdl defaults to mp3, use flac for best quality
         actual_format = 'flac' if audio_format == 'original' else audio_format
         
-        # Get Spotify API credentials from environment
-        spotify_client_id = os.getenv('SPOTIPY_CLIENT_ID', '')
-        spotify_client_secret = os.getenv('SPOTIPY_CLIENT_SECRET', '')
+        # Use Python 3.12 venv for spotdl (asyncio compatibility)
+        project_root = Path(__file__).parent
+        spotdl_python = project_root / '.venv-spotdl' / 'bin' / 'python3'
+        
+        if not spotdl_python.exists():
+            return DownloadResult(
+                False, 
+                DownloadSource.SPOTIFY, 
+                [],
+                "Python 3.12 venv for spotdl not found",
+                [f"Create venv with: uv venv .venv-spotdl --python 3.12 && uv pip install --python .venv-spotdl spotdl"]
+            )
         
         for url in urls:
             self._log(f"🎵 Downloading from Spotify: {url[:60]}...")
             
+            # Ensure output directory exists
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Use Python 3.12 venv to run spotdl
             cmd = [
-                self._spotdl_path,
+                str(spotdl_python), '-m', 'spotdl',
                 'download', url,
-                '--output', str(self.output_dir / output_format),
-                '--format', actual_format,
-                '--bitrate', '320k',
-                '--threads', '4',
+                '--output', str(self.output_dir),
+                '-p', output_format,
+                '--output-format', actual_format,
             ]
             
-            # Add Spotify API credentials if available (for higher rate limits)
-            if spotify_client_id and spotify_client_secret:
-                cmd.extend(['--client-id', spotify_client_id])
-                cmd.extend(['--client-secret', spotify_client_secret])
+            self._log(f"   Using Python 3.12 venv: {spotdl_python}")
             
             try:
                 process = subprocess.Popen(
@@ -695,7 +704,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Multi-Source Music Downloader")
     parser.add_argument('urls', nargs='*', help='URLs to download')
-    parser.add_argument('-o', '--output', default='/Users/sharvin/Documents/Music',
+    parser.add_argument('-o', '--output', default=str(Path.home() / "Documents" / "Music"),
                        help='Output directory')
     parser.add_argument('-f', '--format', choices=['flac', 'mp3', 'm4a', 'opus'],
                        default='flac', help='Audio format')

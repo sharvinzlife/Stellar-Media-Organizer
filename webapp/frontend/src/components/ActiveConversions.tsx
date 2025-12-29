@@ -171,7 +171,7 @@ const ActiveConversions: React.FC = () => {
   const totalActive = gpuJobs.length + backendJobs.length;
 
   const getJobIcon = (job: BackendJob) => {
-    if (job.output_path?.includes('Music') || job.language?.includes('optimal')) {
+    if (job.output_path?.includes('Music') || job.language?.includes('surround_7_0')) {
       return <Music className="h-4 w-4 text-pink-400" />;
     }
     if (job.job_type === 'convert') {
@@ -237,12 +237,7 @@ const ActiveConversions: React.FC = () => {
 
   const getPresetLabel = (preset: string) => {
     const presets: Record<string, string> = {
-      optimal: '✨ Optimal',
-      clarity: '🎯 Clarity',
-      bass_boost: '🔊 Bass',
-      warm: '🌅 Warm',
-      bright: '☀️ Bright',
-      flat: '📊 Flat',
+      surround_7_0: '🔊 7.0 Surround',
       malayalam: '🎬 Malayalam',
       tamil: '🎬 Tamil',
       hindi: '🎬 Hindi',

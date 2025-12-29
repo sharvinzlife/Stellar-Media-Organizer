@@ -600,9 +600,9 @@ class MediaOrganizer:
         """Organize files from directory to output_dir (or in-place if output_dir is None)."""
         directory = Path(directory)
         
-        # Default output to /Users/sharvin/Documents/Processed
+        # Default output to ~/Documents/Processed
         if output_dir is None:
-            output_dir = Path("/Users/sharvin/Documents/Processed")
+            output_dir = Path.home() / "Documents" / "Processed"
         else:
             output_dir = Path(output_dir)
         
@@ -974,8 +974,8 @@ def main():
     parser.add_argument('action', nargs='?', choices=['organize', 'filter', 'both'],
                         help='Action to perform')
     parser.add_argument('directory', nargs='?', default='.', help='Source directory to process')
-    parser.add_argument('--output', '-o', default='/Users/sharvin/Documents/Processed',
-                        help='Output directory (default: /Users/sharvin/Documents/Processed)')
+    parser.add_argument('--output', '-o', default=str(Path.home() / "Documents" / "Processed"),
+                        help='Output directory (default: ~/Documents/Processed)')
     parser.add_argument('--language', default='malayalam',
                         help='Language to keep when filtering audio (e.g., malayalam, tamil, english, spanish)')
     parser.add_argument('--subtitle-language', default='english',

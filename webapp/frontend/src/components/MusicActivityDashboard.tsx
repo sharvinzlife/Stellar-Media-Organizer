@@ -61,10 +61,7 @@ const MusicActivityDashboard: React.FC = () => {
       
       // Filter for music-related jobs (organize type with music output path)
       const musicActive = (activeData.jobs || []).filter((job: MusicJob) => 
-        job.output_path?.includes('Music') || job.language?.includes('optimal') || 
-        job.language?.includes('clarity') || job.language?.includes('bass') ||
-        job.language?.includes('warm') || job.language?.includes('bright') || 
-        job.language?.includes('flat')
+        job.output_path?.includes('Music') || job.language?.includes('surround_7_0')
       );
       setActiveJobs(musicActive);
 
@@ -74,10 +71,7 @@ const MusicActivityDashboard: React.FC = () => {
       
       // Filter for music jobs
       const musicRecent = (recentData.jobs || []).filter((job: MusicJob) => 
-        job.output_path?.includes('Music') || job.language?.includes('optimal') || 
-        job.language?.includes('clarity') || job.language?.includes('bass') ||
-        job.language?.includes('warm') || job.language?.includes('bright') || 
-        job.language?.includes('flat')
+        job.output_path?.includes('Music') || job.language?.includes('surround_7_0')
       );
       setRecentJobs(musicRecent.slice(0, 5));
 
@@ -191,12 +185,7 @@ const MusicActivityDashboard: React.FC = () => {
 
   const getPresetLabel = (preset: string) => {
     const presets: Record<string, string> = {
-      optimal: '✨ Optimal',
-      clarity: '🎯 Clarity',
-      bass_boost: '🔊 Bass Boost',
-      warm: '🌅 Warm',
-      bright: '☀️ Bright',
-      flat: '📊 Flat',
+      surround_7_0: '🔊 7.0 Surround',
     };
     return presets[preset] || preset;
   };

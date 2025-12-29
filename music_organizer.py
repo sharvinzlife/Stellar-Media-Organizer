@@ -57,82 +57,27 @@ logger = logging.getLogger(__name__)
 
 class AudioPreset(Enum):
     """Audio enhancement presets"""
-    OPTIMAL = "optimal"           # Balanced enhancement - recommended default
-    CLARITY = "clarity"           # Focus on vocal/instrument clarity
-    BASS_BOOST = "bass_boost"     # Enhanced low frequencies
-    WARM = "warm"                 # Warmer, fuller sound
-    BRIGHT = "bright"             # Enhanced highs, crisp sound
-    FLAT = "flat"                 # No enhancement, just normalization
-    CUSTOM = "custom"             # User-defined settings
+    SURROUND_7_0 = "surround_7_0"  # 7.0 Timbre-Matching for Polk T50 + Sony surrounds
 
 
 @dataclass
 class AudioSettings:
-    """Audio enhancement settings"""
-    # EQ Settings (in dB, range -12 to +12)
-    bass: float = 0.0            # 60-250 Hz
-    low_mid: float = 0.0         # 250-500 Hz  
-    mid: float = 0.0             # 500-2000 Hz
-    high_mid: float = 0.0        # 2000-4000 Hz
-    treble: float = 0.0          # 4000-16000 Hz
-    presence: float = 0.0        # 5000-8000 Hz (vocal presence)
-    air: float = 0.0             # 12000-16000 Hz (air/sparkle)
-    
-    # Dynamics
-    normalize: bool = True        # EBU R128 loudness normalization
-    target_loudness: float = -14.0  # LUFS target (-23 to -9)
-    dynamic_range: bool = False   # Apply dynamic range compression
-    use_limiter: bool = True      # Apply brick-wall limiter for loudness
-    
-    # Enhancement
-    stereo_width: float = 1.0     # 0.5 to 2.0 (1.0 = no change)
-    clarity_enhance: bool = False # Subtle harmonic enhancement
-    exciter_amount: float = 2.0   # Harmonic exciter intensity (0-10)
-    warmth: float = 0.0           # Analog warmth simulation
+    """Audio enhancement settings for 7.0 surround upmix"""
+    # 7.0 Surround Timbre-Matching Settings
+    # Optimized for: Polk T50 fronts + Sony surround speakers + Denon AVR
+    presence_boost: float = 3.0    # 3500Hz boost for Sony surrounds (dB)
+    air_boost: float = 2.0         # 12000Hz boost for treble matching (dB)
     
     @classmethod
     def from_preset(cls, preset: AudioPreset) -> 'AudioSettings':
         """Create settings from a preset"""
         presets = {
-            # OPTIMAL: Rich, loud, professional sound - best for most music
-            AudioPreset.OPTIMAL: cls(
-                bass=3.0, low_mid=1.0, mid=0.5, high_mid=2.0, treble=2.5,
-                presence=2.0, air=1.5,
-                normalize=True, target_loudness=-11.0, use_limiter=True,
-                stereo_width=1.15, clarity_enhance=True, exciter_amount=3.0,
-                warmth=1.5
-            ),
-            # CLARITY: Crystal clear vocals and instruments
-            AudioPreset.CLARITY: cls(
-                bass=-0.5, low_mid=-1.0, mid=1.5, high_mid=3.0, treble=3.5,
-                presence=3.5, air=2.5,
-                normalize=True, target_loudness=-12.0, use_limiter=True,
-                stereo_width=1.1, clarity_enhance=True, exciter_amount=4.0
-            ),
-            # BASS_BOOST: Deep, punchy bass with maintained clarity
-            AudioPreset.BASS_BOOST: cls(
-                bass=6.0, low_mid=4.0, mid=0.0, high_mid=1.0, treble=2.0,
-                presence=1.0, air=1.0,
-                normalize=True, target_loudness=-12.0, use_limiter=True,
-                dynamic_range=True, stereo_width=1.2
-            ),
-            # WARM: Vintage analog warmth, fuller sound
-            AudioPreset.WARM: cls(
-                bass=4.0, low_mid=3.0, mid=1.5, high_mid=0.0, treble=-0.5,
-                presence=0.5, air=0.0,
-                normalize=True, target_loudness=-13.0, use_limiter=True,
-                stereo_width=1.1, warmth=3.0
-            ),
-            # BRIGHT: Crisp, airy, sparkling highs
-            AudioPreset.BRIGHT: cls(
-                bass=0.0, low_mid=0.0, mid=1.0, high_mid=3.5, treble=4.5,
-                presence=4.0, air=4.0,
-                normalize=True, target_loudness=-12.0, use_limiter=True,
-                stereo_width=1.2, clarity_enhance=True, exciter_amount=4.5
-            ),
-            # FLAT: Transparent, just loudness normalization
-            AudioPreset.FLAT: cls(
-                normalize=True, target_loudness=-14.0, use_limiter=True
+            # SURROUND_7_0: Timbre-matching for Polk T50 + Sony surrounds
+            # - Presence boost (3500Hz): Improves clarity on warmer Sony surrounds
+            # - Air boost (12000Hz): Matches Polk tweeter detail
+            AudioPreset.SURROUND_7_0: cls(
+                presence_boost=3.0,
+                air_boost=2.0
             ),
         }
         return presets.get(preset, cls())
@@ -258,7 +203,17 @@ class MusicBrainzClient:
 
 
 class AudioEnhancer:
-    """FFmpeg-based audio enhancement processor"""
+    """
+    FFmpeg-based 7.0 Surround Upmixer with Timbre-Matching
+    
+    Optimized for: Polk T50 front towers + Sony surround speakers + Denon AVR
+    
+    This processor:
+    1. Upmixes stereo to 7.0 surround
+    2. Applies presence boost (3500Hz) to surrounds for Sony speaker clarity
+    3. Applies air boost (12000Hz) to match Polk tweeter detail
+    4. Outputs lossless FLAC in MKV container for Plex Direct Play
+    """
     
     SUPPORTED_FORMATS = {'.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma'}
     
@@ -270,194 +225,161 @@ class AudioEnhancer:
         try:
             subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
         except (subprocess.CalledProcessError, FileNotFoundError):
-            raise RuntimeError("FFmpeg not found. Install with: brew install ffmpeg")
+            raise RuntimeError("FFmpeg not found. Install with: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)")
     
-    def _build_eq_filter(self, settings: AudioSettings) -> str:
-        """Build FFmpeg equalizer filter chain with 7-band parametric EQ"""
-        filters = []
-        
-        # 7-band parametric EQ using 'equalizer' filter
-        # Format: equalizer=f=<freq>:t=h:w=<width>:g=<gain>
-        eq_bands = [
-            (80, settings.bass, 120),        # Sub-bass/Bass: 60-200 Hz
-            (250, settings.low_mid, 150),    # Low-mid: 200-400 Hz
-            (1000, settings.mid, 600),       # Mid: 500-1500 Hz
-            (2500, settings.high_mid, 1000), # High-mid: 2000-3500 Hz
-            (5000, getattr(settings, 'presence', 0), 1500),  # Presence: 4000-6000 Hz
-            (8000, settings.treble, 3000),   # Treble: 6000-10000 Hz
-            (14000, getattr(settings, 'air', 0), 4000),  # Air: 12000-16000 Hz
-        ]
-        
-        for freq, gain, width in eq_bands:
-            if gain != 0:
-                filters.append(f"equalizer=f={freq}:t=h:w={width}:g={gain}")
-        
-        return ",".join(filters) if filters else ""
-    
-    def _build_filter_chain(self, settings: AudioSettings) -> str:
-        """Build complete FFmpeg audio filter chain with professional mastering"""
-        filters = []
-        
-        # 1. High-pass filter to remove sub-bass rumble (below 30Hz)
-        filters.append("highpass=f=30")
-        
-        # 2. EQ filters (7-band parametric)
-        eq_filter = self._build_eq_filter(settings)
-        if eq_filter:
-            filters.append(eq_filter)
-        
-        # 3. Analog warmth simulation (subtle saturation)
-        warmth = getattr(settings, 'warmth', 0)
-        if warmth > 0:
-            # Use crystalizer for harmonic richness
-            filters.append(f"crystalizer=i={warmth * 0.5}")
-        
-        # 4. Stereo width adjustment
-        if settings.stereo_width != 1.0:
-            # extrastereo filter: multiplier for stereo difference
-            width = settings.stereo_width
-            filters.append(f"extrastereo=m={width}")
-        
-        # 5. Clarity enhancement (harmonic exciter)
-        if settings.clarity_enhance:
-            exciter_amount = getattr(settings, 'exciter_amount', 2.0)
-            # aexciter for harmonic enhancement - adds presence and sparkle
-            filters.append(f"aexciter=level_in=1:level_out=1:amount={exciter_amount}:drive=5:blend=5:freq=3500")
-        
-        # 6. Dynamic range compression (multiband-style using compand)
-        if settings.dynamic_range:
-            # Gentle multiband-style compression for punch and consistency
-            # compand: attack/decay | input/output points | soft-knee | gain | initial volume | delay
-            filters.append("acompressor=threshold=-18dB:ratio=3:attack=10:release=150:makeup=2")
-        
-        # 7. Loudness normalization (EBU R128) - 2-pass style with measured parameters
-        if settings.normalize:
-            # More aggressive loudness target for richer, louder sound
-            target = settings.target_loudness
-            # LRA (Loudness Range) of 7-11 for consistent perceived loudness
-            filters.append(f"loudnorm=I={target}:TP=-1.0:LRA=9:print_format=summary")
-        
-        # 8. Brick-wall limiter for final loudness maximization
-        use_limiter = getattr(settings, 'use_limiter', True)
-        if use_limiter:
-            # alimiter: prevents clipping while maximizing loudness
-            # level_in: input gain, level_out: output ceiling, limit: threshold
-            filters.append("alimiter=level_in=1:level_out=0.99:limit=0.99:attack=5:release=50")
-        
-        # 9. Final DC offset removal and dithering for quality
-        filters.append("aresample=resampler=soxr:precision=28:dither_method=triangular")
-        
-        return ",".join(filters) if filters else "anull"
-    
-    def analyze_audio(self, input_path: str) -> Dict[str, Any]:
-        """Analyze audio file for loudness stats (for 2-pass normalization)"""
-        cmd = [
-            'ffmpeg', '-i', input_path,
-            '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json',
-            '-f', 'null', '-'
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        # Parse loudnorm output from stderr
-        output = result.stderr
+    def _fix_va_metadata(self, file_path: str) -> bool:
+        """
+        Fix V.A./Various Artists in ALBUMARTIST tag.
+        Plex uses ALBUMARTIST for grouping - we replace V.A. with album name.
+        """
         try:
-            # Find JSON block in output
-            json_match = re.search(r'\{[^}]+\}', output, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
-        except json.JSONDecodeError:
-            pass
+            if not MUTAGEN_AVAILABLE:
+                return False
+            
+            audio = mutagen.File(file_path, easy=True)
+            if audio is None:
+                return False
+            
+            album_artist = str(audio.get('albumartist', [''])[0])
+            album = str(audio.get('album', [''])[0])
+            
+            # Check if album_artist is V.A. or similar
+            va_patterns = ['v.a.', 'va', 'various artists', 'various']
+            if album_artist.lower().strip() in va_patterns:
+                # Replace with album name
+                if album:
+                    audio['albumartist'] = album
+                    audio.save()
+                    logger.debug(f"Fixed ALBUMARTIST: V.A. -> {album}")
+                    return True
+            
+            return False
+        except Exception as e:
+            logger.debug(f"Could not fix V.A. metadata: {e}")
+            return False
+    
+    def _build_7_0_surround_filter(self, settings: AudioSettings) -> str:
+        """
+        Build FFmpeg filter for 7.0 surround upmix with timbre-matching EQ
         
-        return {}
+        What this does for your specific gear:
+        - Presence Boost (3500Hz): Sony surround speakers often have a "warmer" or 
+          "muffled" mid-range compared to Polk T50s. We boost 3.5kHz to improve 
+          clarity and dialogue definition in the surround field.
+        - Brightness/Air (12000Hz): Adds boost to highest frequencies to match 
+          the detailed tweeter response of your front Polk speakers.
+        - Multi-Channel Mapping: Treats Side and Back channels independently from 
+          Fronts, so Polk T50s remain untouched while only Sony speakers are "brightened".
+        
+        7.0 Channel Layout: FL FR FC LFE BL BR SL SR (but 7.0 has no LFE, so: FL FR FC BL BR SL SR)
+        We apply EQ to: SL, SR, BL, BR (surround channels for Sony speakers)
+        We leave untouched: FL, FR, FC (front channels for Polk T50s)
+        """
+        presence_boost = settings.presence_boost  # 3500Hz boost (dB)
+        air_boost = settings.air_boost            # 12000Hz boost (dB)
+        
+        # 7.0 Timbre-Matching Surround Filter
+        # Step 1: Upmix stereo to 7.0 surround
+        # Step 2: Split into individual channels
+        # Step 3: Apply EQ only to surround channels (SL, SR, BL, BR)
+        # Step 4: Recombine into 7.0 output
+        #
+        # 7.0 layout: FL FR FC BL BR SL SR (7 channels)
+        # Channels 0-2 (FL, FR, FC) = Polk T50 fronts - no EQ
+        # Channels 3-6 (BL, BR, SL, SR) = Sony surrounds - apply timbre-matching EQ
+        filter_complex = (
+            # Upmix to 7.0 surround
+            f"[0:a]surround=chl_out=7.0[7ch];"
+            # Split into individual mono channels
+            f"[7ch]channelsplit=channel_layout=7.0[FL][FR][FC][BL][BR][SL][SR];"
+            # Apply timbre-matching EQ to surround channels (Sony speakers)
+            f"[SL]equalizer=f=3500:t=q:w=1:g={presence_boost},equalizer=f=12000:t=q:w=1:g={air_boost}[SL_eq];"
+            f"[SR]equalizer=f=3500:t=q:w=1:g={presence_boost},equalizer=f=12000:t=q:w=1:g={air_boost}[SR_eq];"
+            f"[BL]equalizer=f=3500:t=q:w=1:g={presence_boost},equalizer=f=12000:t=q:w=1:g={air_boost}[BL_eq];"
+            f"[BR]equalizer=f=3500:t=q:w=1:g={presence_boost},equalizer=f=12000:t=q:w=1:g={air_boost}[BR_eq];"
+            # Recombine into 7.0 output (FL FR FC BL BR SL SR)
+            f"[FL][FR][FC][BL_eq][BR_eq][SL_eq][SR_eq]join=inputs=7:channel_layout=7.0[out]"
+        )
+        
+        return filter_complex
     
     def enhance_audio(
         self,
         input_path: str,
         output_path: str,
         settings: Optional[AudioSettings] = None,
-        preset: AudioPreset = AudioPreset.OPTIMAL,
+        preset: AudioPreset = AudioPreset.SURROUND_7_0,
         preserve_metadata: bool = True,
         output_format: Optional[str] = None
     ) -> bool:
         """
-        Enhance audio file with EQ, normalization, and effects
+        Upmix stereo audio to 7.0 surround with timbre-matching EQ
         
         Args:
-            input_path: Source audio file
-            output_path: Destination path
+            input_path: Source audio file (stereo)
+            output_path: Destination path (will be .flac with 7.0 audio)
             settings: Custom AudioSettings (overrides preset)
-            preset: Audio enhancement preset
+            preset: Audio enhancement preset (SURROUND_7_0)
             preserve_metadata: Copy metadata to output
-            output_format: Output format (flac, mp3, m4a, opus, or None to auto-detect)
+            output_format: Ignored - always outputs multi-channel FLAC
         
         Returns:
             True if successful
+        
+        Hardware Calibration Tips (Denon AVR):
+        - Channel Levels: Sony surrounds are often less efficient than Polk towers.
+          Go to Setup > Speakers > Manual Setup > Levels and increase Surround 
+          and Surround Back channels by +1.5dB or +2.0dB.
+        - Crossover: Since you have no sub, ensure Front Speakers are set to "Large" 
+          so Polk T50s handle all the bass for the whole system.
+        - Plex Playback: Ensure you are using "Direct Play" for best quality.
         """
         if settings is None:
             settings = AudioSettings.from_preset(preset)
         
-        filter_chain = self._build_filter_chain(settings)
+        # Build 7.0 surround filter with timbre-matching
+        filter_complex = self._build_7_0_surround_filter(settings)
         
-        # Auto-detect output format from extension if not specified
-        if output_format is None:
-            output_format = Path(output_path).suffix.lstrip('.').lower()
+        # Output to FLAC (supports multi-channel audio natively)
+        if not output_path.endswith('.flac'):
+            output_path = str(Path(output_path).with_suffix('.flac'))
         
-        # Build FFmpeg command
-        cmd = ['ffmpeg', '-y', '-i', input_path]
-        
-        # Audio filter
-        cmd.extend(['-af', filter_chain])
-        
-        # Formats that support embedded cover art as video stream
-        formats_with_cover_art = {'flac', 'mp3', 'm4a', 'aac'}
-        supports_cover = output_format in formats_with_cover_art
-        
-        # Output codec settings based on format
-        if output_format == 'flac':
-            cmd.extend(['-c:a', 'flac', '-compression_level', '8'])
-        elif output_format == 'mp3':
-            cmd.extend(['-c:a', 'libmp3lame', '-q:a', '0'])  # VBR highest quality
-        elif output_format in ('m4a', 'aac'):
-            cmd.extend(['-c:a', 'aac', '-b:a', '320k'])
-        elif output_format == 'opus':
-            cmd.extend(['-c:a', 'libopus', '-b:a', '256k'])
-        elif output_format == 'ogg':
-            cmd.extend(['-c:a', 'libvorbis', '-q:a', '10'])
-        elif output_format == 'wav':
-            cmd.extend(['-c:a', 'pcm_s24le'])
-        else:
-            # Default to FLAC for unknown formats (never use copy with filters!)
-            cmd.extend(['-c:a', 'flac', '-compression_level', '8'])
-            supports_cover = True
-            # Update output path to .flac if needed
-            if not output_path.endswith('.flac'):
-                output_path = str(Path(output_path).with_suffix('.flac'))
-        
-        # Preserve metadata and cover art (only for formats that support it)
-        if preserve_metadata:
-            if supports_cover:
-                # Map audio, optional video (cover art), copy video codec, preserve metadata
-                cmd.extend(['-map', '0:a', '-map', '0:v?', '-c:v', 'copy', '-map_metadata', '0', '-disposition:v', 'attached_pic'])
-            else:
-                # For opus/ogg/wav - only map audio and metadata (no cover art support)
-                cmd.extend(['-map', '0:a', '-map_metadata', '0'])
-        
-        cmd.append(output_path)
+        # Build FFmpeg command for 7.0 surround upmix
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', input_path,
+            '-filter_complex', filter_complex,
+            '-map', '[out]',
+            '-c:a', 'flac',           # Lossless FLAC codec
+            '-sample_fmt', 's32',      # 32-bit for quality
+            output_path
+        ]
         
         try:
-            # Use errors='replace' to handle non-UTF8 characters in FFmpeg output
-            result = subprocess.run(cmd, capture_output=True, check=True, encoding='utf-8', errors='replace')
+            logger.info(f"🔊 Upmixing to 7.0 surround: {Path(input_path).name}")
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                check=True, 
+                encoding='utf-8', 
+                errors='replace'
+            )
+            
             # Verify output file exists and has content
             output_file = Path(output_path)
             if output_file.exists() and output_file.stat().st_size > 0:
-                logger.info(f"Enhanced: {input_path} -> {output_path}")
+                logger.info(f"✅ 7.0 Surround FLAC: {input_path} -> {output_path}")
+                
+                # Fix V.A./Various Artists in ALBUMARTIST tag for Plex
+                self._fix_va_metadata(output_path)
+                
                 return True
             else:
                 logger.error(f"FFmpeg produced empty output for: {input_path}")
                 if output_file.exists():
                     output_file.unlink()
                 return False
+                
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr[:500] if e.stderr else 'No error message'
             logger.error(f"FFmpeg error for {input_path}: {error_msg}")
@@ -471,11 +393,11 @@ class AudioEnhancer:
         self,
         input_dir: str,
         output_dir: str,
-        preset: AudioPreset = AudioPreset.OPTIMAL,
+        preset: AudioPreset = AudioPreset.SURROUND_7_0,
         output_format: str = "flac"
     ) -> Tuple[int, int]:
         """
-        Batch enhance all audio files in directory
+        Batch upmix all audio files in directory to 7.0 surround
         
         Returns:
             Tuple of (successful, failed) counts
@@ -489,12 +411,12 @@ class AudioEnhancer:
         
         for file in input_path.rglob('*'):
             if file.suffix.lower() in self.SUPPORTED_FORMATS:
-                # Preserve relative path structure
+                # Preserve relative path structure, output as .flac
                 rel_path = file.relative_to(input_path)
-                out_file = output_path / rel_path.with_suffix(f'.{output_format}')
+                out_file = output_path / rel_path.with_suffix('.flac')
                 out_file.parent.mkdir(parents=True, exist_ok=True)
                 
-                if self.enhance_audio(str(file), str(out_file), preset=preset, output_format=output_format):
+                if self.enhance_audio(str(file), str(out_file), preset=preset):
                     success += 1
                 else:
                     failed += 1
@@ -771,30 +693,114 @@ class MusicLibraryOrganizer:
     
     def _is_various_artists(self, artist: str) -> bool:
         """Check if artist name indicates a compilation/various artists album"""
+        if not artist:
+            return False
         va_patterns = [
             'various artists', 'v.a.', 'va', 'various', 'compilation',
             'soundtrack', 'ost', 'original soundtrack', 'mixed by',
-            'various artist', 'varios artistas', 'diverse'
+            'various artist', 'varios artistas', 'diverse', 'v. a.'
         ]
         artist_lower = artist.lower().strip()
         return any(pattern in artist_lower or artist_lower == pattern for pattern in va_patterns)
+    
+    def _extract_album_from_folder(self, folder_path: str) -> Optional[Dict[str, str]]:
+        """
+        Extract album metadata from folder name like:
+        'V.A. - Music That Makes Me Want To Dance (2025 Dance) [Flac 16-44]'
+        
+        Returns dict with: album, year, artist (cleaned)
+        """
+        folder_name = Path(folder_path).name
+        
+        # Pattern: "Artist - Album Name (Year Info) [Quality]"
+        # We want to extract album name and year, skip V.A./Various Artists
+        
+        # Remove quality tags like [Flac 16-44], [MP3 320], etc.
+        folder_clean = re.sub(r'\s*\[.*?\]\s*$', '', folder_name).strip()
+        
+        # Check for "Artist - Album" pattern
+        if ' - ' in folder_clean:
+            parts = folder_clean.split(' - ', 1)
+            artist_part = parts[0].strip()
+            album_part = parts[1].strip() if len(parts) > 1 else folder_clean
+            
+            # If artist is V.A. or Various Artists, use album name as album_artist
+            if self._is_various_artists(artist_part):
+                # Extract year from album part if present
+                year_match = re.search(r'\((\d{4})\s*[^)]*\)', album_part)
+                year = year_match.group(1) if year_match else ""
+                
+                # Clean album name - keep the descriptive part
+                # "Music That Makes Me Want To Dance (2025 Dance)" -> keep as is for album
+                album_name = album_part
+                
+                return {
+                    'album': album_name,
+                    'album_artist': album_name,  # Use album name as album_artist
+                    'year': year,
+                    'is_compilation': True
+                }
+        
+        # No "Artist - Album" pattern, just use folder name
+        year_match = re.search(r'\((\d{4})\)', folder_clean)
+        year = year_match.group(1) if year_match else ""
+        
+        return {
+            'album': folder_clean,
+            'album_artist': folder_clean,
+            'year': year,
+            'is_compilation': False
+        }
     
     def _generate_output_path(
         self,
         output_dir: str,
         metadata: MusicMetadata,
-        original_ext: str
+        original_ext: str,
+        source_folder: str = ""
     ) -> Path:
-        """Generate Plex/Jellyfin compatible output path"""
-        album_artist = metadata.album_artist or metadata.artist or ""
-        album = self._sanitize_filename(metadata.album or "Unknown Album")
+        """
+        Generate output path for music files.
         
-        # For compilation/various artists albums, use single folder with album name (year)
-        # Structure: /Music/Album Name (Year)/01 - Track.flac
+        For compilations (V.A., Various Artists):
+        - Uses album name as folder: /Album Name (Year)/01 - Track.mkv
+        - NEVER uses "V.A." or "Various Artists" in folder names
+        
+        For regular albums:
+        - Uses artist/album structure: /Artist/Album (Year)/01 - Track.mkv
+        """
+        # Try to extract album info from source folder if available
+        folder_info = None
+        if source_folder:
+            folder_info = self._extract_album_from_folder(source_folder)
+        
+        # Determine album and album_artist
+        album_artist = metadata.album_artist or metadata.artist or ""
+        album = metadata.album or ""
+        year = metadata.year or ""
+        
+        # If folder info available and it's a compilation, use that
+        if folder_info and folder_info.get('is_compilation'):
+            album = folder_info.get('album', album) or album
+            album_artist = folder_info.get('album_artist', album) or album  # Use album name
+            year = folder_info.get('year', year) or year
+        
+        # ALWAYS skip V.A./Various Artists - use album name instead
         if self._is_various_artists(album_artist) or not album_artist:
-            # Single folder: Album Name (Year)
-            if metadata.year:
-                folder = f"{album} ({metadata.year})"
+            album_artist = album or "Unknown Album"
+        
+        # Sanitize names
+        album = self._sanitize_filename(album or "Unknown Album")
+        album_artist = self._sanitize_filename(album_artist)
+        
+        # For compilations, use single folder: /Album Name (Year)/
+        # For regular albums, use: /Artist/Album (Year)/
+        is_compilation = self._is_various_artists(metadata.album_artist or metadata.artist or "")
+        
+        if is_compilation or folder_info and folder_info.get('is_compilation'):
+            # Compilation: /Album Name (Year)/01 - Track.mkv
+            if year:
+                folder = f"{album} ({year})"
             else:
                 folder = album
             
@@ -809,11 +815,11 @@ class MusicLibraryOrganizer:
             
             return Path(output_dir) / folder / filename
         else:
-            # Regular artist album: /Artist/Album (Year)/Track.flac
-            artist_folder = self._sanitize_filename(album_artist)
+            # Regular album: /Artist/Album (Year)/01 - Track.mkv
+            artist_folder = album_artist
             
-            if metadata.year:
-                album_folder = f"{album} ({metadata.year})"
+            if year:
+                album_folder = f"{album} ({year})"
             else:
                 album_folder = album
             
@@ -832,19 +838,19 @@ class MusicLibraryOrganizer:
         input_path: str,
         output_dir: str,
         enhance_audio: bool = True,
-        audio_preset: AudioPreset = AudioPreset.OPTIMAL,
+        audio_preset: AudioPreset = AudioPreset.SURROUND_7_0,
         output_format: Optional[str] = None,
         lookup_metadata: bool = True
     ) -> Optional[str]:
         """
-        Organize a single music file
+        Organize a single music file with 7.0 surround upmix
         
         Args:
             input_path: Source file path
             output_dir: Base output directory
-            enhance_audio: Apply audio enhancement
-            audio_preset: Enhancement preset
-            output_format: Output format (None = keep original)
+            enhance_audio: Apply 7.0 surround upmix with timbre-matching
+            audio_preset: Enhancement preset (SURROUND_7_0)
+            output_format: Output format (None = MKV with FLAC for 7.0)
             lookup_metadata: Use MusicBrainz for metadata
         
         Returns:
@@ -856,18 +862,34 @@ class MusicLibraryOrganizer:
             logger.warning(f"Unsupported format: {input_path}")
             return None
         
+        # Get source folder for album detection
+        source_folder = str(input_file.parent)
+        
         # Read existing metadata
         metadata = self._read_embedded_metadata(input_path)
         
-        # Enhance with MusicBrainz lookup
+        # Try to extract album info from folder name (for V.A. compilations)
+        folder_info = self._extract_album_from_folder(source_folder)
+        if folder_info:
+            # If folder indicates compilation, update metadata
+            if folder_info.get('is_compilation'):
+                if not metadata.album:
+                    metadata.album = folder_info.get('album', '')
+                if not metadata.album_artist or self._is_various_artists(metadata.album_artist):
+                    metadata.album_artist = folder_info.get('album_artist', metadata.album)
+                if not metadata.year:
+                    metadata.year = folder_info.get('year', '')
+                logger.info(f"📀 Compilation detected: {metadata.album}")
+        
+        # Enhance with MusicBrainz/Discogs lookup
         if lookup_metadata:
             metadata = self._lookup_metadata(input_path, metadata)
         
-        # Determine output format
-        out_ext = f".{output_format}" if output_format else input_file.suffix
+        # Determine output format - always FLAC for 7.0 surround (proper audio container)
+        out_ext = ".flac" if enhance_audio else (f".{output_format}" if output_format else input_file.suffix)
         
-        # Generate output path
-        output_path = self._generate_output_path(output_dir, metadata, out_ext)
+        # Generate output path (passes source folder for V.A. detection)
+        output_path = self._generate_output_path(output_dir, metadata, out_ext, source_folder)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Process file
@@ -895,12 +917,12 @@ class MusicLibraryOrganizer:
         input_dir: str,
         output_dir: str,
         enhance_audio: bool = True,
-        audio_preset: AudioPreset = AudioPreset.OPTIMAL,
+        audio_preset: AudioPreset = AudioPreset.SURROUND_7_0,
         output_format: Optional[str] = None,
         lookup_metadata: bool = True
     ) -> Dict[str, Any]:
         """
-        Organize all music files in a directory
+        Organize all music files in a directory with 7.0 surround upmix
         
         Returns:
             Summary dict with counts and any errors
@@ -946,17 +968,13 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Music Organizer Pro - Organize and enhance your music library"
+        description="Music Organizer Pro - 7.0 Surround Upmix with Timbre-Matching"
     )
     parser.add_argument('input', help='Input file or directory')
-    parser.add_argument('-o', '--output', default='/Users/sharvin/Documents/Music',
+    parser.add_argument('-o', '--output', default=str(Path.home() / "Documents" / "Music"),
                        help='Output directory')
-    parser.add_argument('--preset', choices=['optimal', 'clarity', 'bass_boost', 'warm', 'bright', 'flat'],
-                       default='optimal', help='Audio enhancement preset')
-    parser.add_argument('--format', choices=['flac', 'mp3', 'm4a', 'keep'],
-                       default='keep', help='Output format')
     parser.add_argument('--no-enhance', action='store_true',
-                       help='Skip audio enhancement')
+                       help='Skip 7.0 surround upmix (just organize)')
     parser.add_argument('--no-lookup', action='store_true',
                        help='Skip MusicBrainz metadata lookup')
     parser.add_argument('--mb-client-id', default='',
@@ -966,19 +984,11 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Map preset string to enum
-    preset_map = {
-        'optimal': AudioPreset.OPTIMAL,
-        'clarity': AudioPreset.CLARITY,
-        'bass_boost': AudioPreset.BASS_BOOST,
-        'warm': AudioPreset.WARM,
-        'bright': AudioPreset.BRIGHT,
-        'flat': AudioPreset.FLAT,
-    }
-    preset = preset_map.get(args.preset, AudioPreset.OPTIMAL)
+    # Always use SURROUND_7_0 preset
+    preset = AudioPreset.SURROUND_7_0
     
-    # Output format
-    output_format = None if args.format == 'keep' else args.format
+    # Output format is always FLAC for 7.0 surround (proper audio container)
+    output_format = 'flac'
     
     # Initialize organizer
     organizer = MusicLibraryOrganizer(
@@ -988,6 +998,11 @@ if __name__ == "__main__":
     )
     
     input_path = Path(args.input)
+    
+    print("🔊 7.0 Surround Timbre-Matching Mode")
+    print("   Optimized for: Polk T50 fronts + Sony surrounds + Denon AVR")
+    print("   Output: Multi-channel FLAC for Plex Direct Play")
+    print()
     
     if input_path.is_file():
         result = organizer.organize_file(
@@ -1000,6 +1015,11 @@ if __name__ == "__main__":
         )
         if result:
             print(f"✅ Organized: {result}")
+            print()
+            print("📺 Denon AVR Calibration Tips:")
+            print("   • Channel Levels: Increase Surround/Back by +1.5dB to +2.0dB")
+            print("   • Crossover: Set Front Speakers to 'Large' (no sub)")
+            print("   • Plex: Use 'Direct Play' for best quality")
         else:
             print("❌ Failed to organize file")
     elif input_path.is_dir():
@@ -1019,5 +1039,10 @@ if __name__ == "__main__":
             print(f"\n⚠️  Errors:")
             for err in results['errors'][:10]:
                 print(f"   - {err}")
+        print()
+        print("📺 Denon AVR Calibration Tips:")
+        print("   • Channel Levels: Increase Surround/Back by +1.5dB to +2.0dB")
+        print("   • Crossover: Set Front Speakers to 'Large' (no sub)")
+        print("   • Plex: Use 'Direct Play' for best quality")
     else:
         print(f"❌ Path not found: {args.input}")

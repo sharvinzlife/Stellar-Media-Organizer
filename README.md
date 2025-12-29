@@ -71,16 +71,21 @@ Stellar Media Organizer is an **all-in-one solution** for managing your media li
 </tr>
 </table>
 
-### 🎛️ Audio Enhancement Presets
+### 🔊 7.0 Surround Timbre-Matching
 
-| Preset | Description | Best For |
-|--------|-------------|----------|
-| ✨ **Optimal** | Rich, loud, professional | Most music |
-| 🎯 **Clarity** | Crystal clear vocals | Podcasts, acoustic |
-| 🔊 **Bass Boost** | Deep, punchy bass | EDM, hip-hop |
-| 🌅 **Warm** | Vintage analog warmth | Jazz, classical |
-| ☀️ **Bright** | Crisp, sparkling highs | Pop, rock |
-| 📊 **Flat** | Just loudness normalization | Purists |
+| Feature | Description |
+|---------|-------------|
+| 🎯 **Upmix** | Stereo → 7.0 surround for home theater |
+| 🔊 **Presence Boost** | 3500Hz +3dB for Sony surround clarity |
+| ✨ **Air Boost** | 12000Hz +2dB to match Polk tweeter detail |
+| 📦 **Output** | FLAC in MKV container for Plex Direct Play |
+
+**Optimized for:** Polk T50 front towers + Sony surround speakers + Denon AVR
+
+**Denon AVR Calibration:**
+- Channel Levels: Increase Surround/Back by +1.5dB to +2.0dB
+- Crossover: Set Front Speakers to "Large" (no sub)
+- Plex: Use "Direct Play" for best quality
 
 ---
 
@@ -282,10 +287,9 @@ python media_organizer.py organize /path/to/media
 python media_organizer.py filter /path/to/media --language malayalam
 
 # 🎵 Organize music with enhancement
+# 🔊 Upmix music to 7.0 surround
 python music_organizer.py /path/to/music \
-  --output /path/to/output \
-  --preset optimal \
-  --format flac
+  --output /path/to/output
 
 # 📥 Download music from URL
 python music_downloader.py "https://open.spotify.com/playlist/..."

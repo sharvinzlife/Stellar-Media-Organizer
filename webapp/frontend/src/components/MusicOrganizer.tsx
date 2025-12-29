@@ -7,31 +7,13 @@ import {
   FolderOpen,
   Play,
   Loader2,
-  Sparkles,
   Volume2,
-  Disc3,
   CheckCircle,
   AlertCircle,
-  Settings2,
-  Headphones,
-  Radio,
   HardDrive,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
-
-interface Preset {
-  id: string;
-  name: string;
-  description: string;
-  recommended?: boolean;
-}
-
-interface Format {
-  id: string;
-  name: string;
-  description: string;
-}
 
 interface MusicStatus {
   configured: boolean;
@@ -39,17 +21,6 @@ interface MusicStatus {
   musicbrainz_configured: boolean;
   mutagen_available: boolean;
   default_output: string;
-}
-
-interface PresetsResponse {
-  presets: Preset[];
-  formats: Format[];
-}
-
-interface ProcessResponse {
-  success: boolean;
-  message: string;
-  job_id?: number;
 }
 
 interface NASLocation {
@@ -68,13 +39,8 @@ declare global {
 
 const MusicOrganizer: React.FC = () => {
   const [sourcePath, setSourcePath] = useState<string>('');
-  const [outputPath, setOutputPath] = useState<string>('/Users/sharvin/Documents/Music');
-  const [preset, setPreset] = useState<string>('optimal');
-  const [outputFormat, setOutputFormat] = useState<string>('keep');
-  const [enhanceAudio, setEnhanceAudio] = useState<boolean>(true);
-  const [lookupMetadata, setLookupMetadata] = useState<boolean>(true);
+  const [outputPath, setOutputPath] = useState<string>('');
   const [processing, setProcessing] = useState<boolean>(false);
-  const [enhanceOnly, setEnhanceOnly] = useState<boolean>(true);
   
   // NAS destination - NAS is primary
   const [destinationType, setDestinationType] = useState<'local' | 'nas'>('nas');
@@ -82,12 +48,9 @@ const MusicOrganizer: React.FC = () => {
   const [selectedNAS, setSelectedNAS] = useState<string>('');
   
   const [status, setStatus] = useState<MusicStatus | null>(null);
-  const [presets, setPresets] = useState<Preset[]>([]);
-  const [formats, setFormats] = useState<Format[]>([]);
 
   useEffect(() => {
     fetchStatus();
-    fetchPresets();
     loadNASLocations();
   }, []);
 
@@ -101,17 +64,6 @@ const MusicOrganizer: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to fetch music status:', error);
-    }
-  };
-
-  const fetchPresets = async (): Promise<void> => {
-    try {
-      const response = await fetch('/api/v1/music/presets');
-      const data: PresetsResponse = await response.json();
-      setPresets(data.presets);
-      setFormats(data.formats);
-    } catch (error) {
-      console.error('Failed to fetch presets:', error);
     }
   };
 
@@ -144,45 +96,26 @@ const MusicOrganizer: React.FC = () => {
     }
 
     setProcessing(true);
-    const mode = enhanceOnly ? 'Enhance Only' : 'Organize & Enhance';
     const dest = destinationType === 'nas' ? `NAS: ${selectedNAS}` : `Local: ${outputPath}`;
-    window.addLog?.(`🎵 Starting music processing (${mode}) → ${dest}`, 'info');
-    window.addLog?.(`   Preset: ${preset}, Format: ${outputFormat}`, 'info');
+    window.addLog?.(`🔊 Starting 7.0 surround upmix → ${dest}`, 'info');
 
     try {
-      // Use different endpoint based on mode
-      const endpoint = enhanceOnly ? '/api/v1/music/enhance' : '/api/v1/music/process';
-      const body = enhanceOnly 
-        ? {
-            source_path: sourcePath,
-            output_path: destinationType === 'local' ? outputPath : undefined,
-            preset,
-            output_format: outputFormat,
-            nas_destination: destinationType === 'nas' ? {
-              nas_name: selectedNAS,
-              category: 'music',
-            } : undefined,
-          }
-        : {
-            source_path: sourcePath,
-            output_path: destinationType === 'local' ? outputPath : undefined,
-            preset,
-            output_format: outputFormat,
-            enhance_audio: enhanceAudio,
-            lookup_metadata: lookupMetadata,
-            nas_destination: destinationType === 'nas' ? {
-              nas_name: selectedNAS,
-              category: 'music',
-            } : undefined,
-          };
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/v1/music/enhance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          source_path: sourcePath,
+          output_path: destinationType === 'local' ? outputPath : undefined,
+          preset: 'surround_7_0',
+          output_format: 'flac',
+          nas_destination: destinationType === 'nas' ? {
+            nas_name: selectedNAS,
+            category: 'music',
+          } : undefined,
+        }),
       });
 
-      const data: ProcessResponse = await response.json();
+      const data = await response.json();
 
       if (data.success) {
         toast.success(data.message);
@@ -200,18 +133,6 @@ const MusicOrganizer: React.FC = () => {
     }
   };
 
-  const getPresetIcon = (presetId: string) => {
-    switch (presetId) {
-      case 'optimal': return <Sparkles className="h-4 w-4" />;
-      case 'clarity': return <Radio className="h-4 w-4" />;
-      case 'bass_boost': return <Volume2 className="h-4 w-4" />;
-      case 'warm': return <Headphones className="h-4 w-4" />;
-      case 'bright': return <Disc3 className="h-4 w-4" />;
-      case 'flat': return <Settings2 className="h-4 w-4" />;
-      default: return <Music className="h-4 w-4" />;
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Status Card */}
@@ -220,13 +141,13 @@ const MusicOrganizer: React.FC = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border border-pink-500/20">
-                  <Music className="h-5 w-5 text-pink-400" />
+                <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/20">
+                  <Volume2 className="h-5 w-5 text-cyan-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-white">Music Organizer</h3>
+                  <h3 className="font-semibold text-white">7.0 Surround Upmixer</h3>
                   <p className="text-sm text-slate-400">
-                    {status.musicbrainz_configured ? 'MusicBrainz connected' : 'MusicBrainz not configured'}
+                    Timbre-matching for Polk T50 + Sony surrounds
                   </p>
                 </div>
               </div>
@@ -253,13 +174,13 @@ const MusicOrganizer: React.FC = () => {
       <Card variant="glass">
         <CardHeader>
           <CardTitle className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 border border-pink-500/20">
-              <Music className="h-5 w-5 text-pink-400" />
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/20">
+              <Volume2 className="h-5 w-5 text-cyan-400" />
             </div>
-            Music Library Organizer
+            7.0 Surround Upmixer
           </CardTitle>
           <CardDescription>
-            Organize music for Plex/Jellyfin with MusicBrainz metadata and audio enhancement
+            Upmix stereo music to 7.0 surround with timbre-matching for your home theater
           </CardDescription>
         </CardHeader>
 
@@ -267,7 +188,7 @@ const MusicOrganizer: React.FC = () => {
           {/* Source Directory */}
           <div className="space-y-3">
             <label className="text-sm font-semibold text-white flex items-center gap-2">
-              <FolderOpen className="h-4 w-4 text-pink-400" />
+              <FolderOpen className="h-4 w-4 text-cyan-400" />
               Source Folder
             </label>
             <Input
@@ -281,7 +202,7 @@ const MusicOrganizer: React.FC = () => {
           {/* Output Directory */}
           <div className="space-y-3">
             <label className="text-sm font-semibold text-white flex items-center gap-2">
-              <FolderOpen className="h-4 w-4 text-purple-400" />
+              <FolderOpen className="h-4 w-4 text-blue-400" />
               Destination
             </label>
             
@@ -292,7 +213,7 @@ const MusicOrganizer: React.FC = () => {
                 className={`
                   flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg transition-all
                   ${destinationType === 'local' 
-                    ? 'bg-purple-500 text-white shadow-lg' 
+                    ? 'bg-blue-500 text-white shadow-lg' 
                     : 'text-slate-400 hover:text-white hover:bg-white/10'
                   }
                 `}
@@ -322,12 +243,12 @@ const MusicOrganizer: React.FC = () => {
               <>
                 <Input
                   type="text"
-                  placeholder="/Users/sharvin/Documents/Music"
+                  placeholder="~/Documents/Music"
                   value={outputPath}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setOutputPath(e.target.value)}
                 />
                 <p className="text-xs text-slate-500">
-                  📁 Structure: /Artist/Album (Year)/01 - Track.ext
+                  📁 Output: Album Name/01 - Track.mkv (7.0 FLAC)
                 </p>
               </>
             )}
@@ -347,192 +268,70 @@ const MusicOrganizer: React.FC = () => {
                   ))}
                 </select>
                 <p className="text-xs text-emerald-400/70 bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20">
-                  🌐 Music will be moved to NAS: {selectedNAS} → /music/Artist/Album (Year)/
+                  🌐 Music will be moved to NAS: {selectedNAS} → /music/Album Name/
                 </p>
               </div>
             )}
           </div>
 
-          {/* Processing Mode */}
-          <div className="space-y-3">
-            <label className="text-sm font-semibold text-white flex items-center gap-2">
-              <Settings2 className="h-4 w-4 text-cyan-400" />
-              Processing Mode
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setEnhanceOnly(true)}
-                className={`
-                  p-4 rounded-xl border-2 transition-all duration-200 text-left
-                  ${enhanceOnly
-                    ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/20'
-                    : 'border-white/10 hover:border-white/30 hover:bg-white/5'
-                  }
-                `}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles className={`h-4 w-4 ${enhanceOnly ? 'text-cyan-400' : 'text-slate-400'}`} />
-                  <span className={`font-semibold ${enhanceOnly ? 'text-white' : 'text-slate-300'}`}>
-                    Enhance Only
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Apply audio enhancement while preserving folder structure
-                </p>
-              </button>
-              <button
-                onClick={() => setEnhanceOnly(false)}
-                className={`
-                  p-4 rounded-xl border-2 transition-all duration-200 text-left
-                  ${!enhanceOnly
-                    ? 'border-pink-500 bg-pink-500/10 shadow-lg shadow-pink-500/20'
-                    : 'border-white/10 hover:border-white/30 hover:bg-white/5'
-                  }
-                `}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Music className={`h-4 w-4 ${!enhanceOnly ? 'text-pink-400' : 'text-slate-400'}`} />
-                  <span className={`font-semibold ${!enhanceOnly ? 'text-white' : 'text-slate-300'}`}>
-                    Organize & Enhance
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Reorganize by Artist/Album with MusicBrainz metadata
-                </p>
-              </button>
+          {/* 7.0 Surround Info Card */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/30">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 rounded-lg bg-cyan-500/20">
+                <Volume2 className="h-5 w-5 text-cyan-400" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-white">7.0 Surround Timbre-Matching</h4>
+                <p className="text-xs text-slate-400">Optimized for Polk T50 + Sony surrounds + Denon AVR</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-cyan-400">●</span> Presence +3dB @ 3500Hz
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-cyan-400">●</span> Air +2dB @ 12000Hz
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-pink-400">●</span> Output: FLAC in MKV
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="text-pink-400">●</span> Plex Direct Play ready
+              </div>
             </div>
           </div>
-
-          {/* Audio Enhancement Preset */}
-          <div className="space-y-3">
-            <label className="text-sm font-semibold text-white flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-yellow-400" />
-              Audio Enhancement Preset
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {presets.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setPreset(p.id)}
-                  className={`
-                    flex items-center gap-2 p-3 rounded-xl border-2 transition-all duration-200 text-left
-                    ${preset === p.id
-                      ? 'border-pink-500 bg-pink-500/10 shadow-lg shadow-pink-500/20'
-                      : 'border-white/10 hover:border-white/30 hover:bg-white/5'
-                    }
-                  `}
-                >
-                  <div className={`${preset === p.id ? 'text-pink-400' : 'text-slate-400'}`}>
-                    {getPresetIcon(p.id)}
-                  </div>
-                  <div>
-                    <div className={`font-semibold text-sm ${preset === p.id ? 'text-white' : 'text-slate-300'}`}>
-                      {p.name}
-                      {p.recommended && (
-                        <span className="ml-1 text-xs text-yellow-400">★</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-500 line-clamp-1">{p.description}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Output Format */}
-          <div className="space-y-3">
-            <label className="text-sm font-semibold text-white">Output Format</label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {formats.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setOutputFormat(f.id)}
-                  className={`
-                    p-3 rounded-xl border-2 transition-all duration-200 text-center
-                    ${outputFormat === f.id
-                      ? 'border-purple-500 bg-purple-500/10'
-                      : 'border-white/10 hover:border-white/30 hover:bg-white/5'
-                    }
-                  `}
-                >
-                  <div className={`font-semibold text-sm ${outputFormat === f.id ? 'text-white' : 'text-slate-300'}`}>
-                    {f.name}
-                  </div>
-                  <div className="text-xs text-slate-500">{f.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Options - only show when not in enhance-only mode */}
-          {!enhanceOnly && (
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={enhanceAudio}
-                  onChange={(e) => setEnhanceAudio(e.target.checked)}
-                  className="w-4 h-4 rounded border-white/20 bg-white/10 text-pink-500 focus:ring-pink-500/50"
-                />
-                <span className="text-sm text-slate-300">Enhance Audio (EQ + Normalization)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={lookupMetadata}
-                  onChange={(e) => setLookupMetadata(e.target.checked)}
-                  className="w-4 h-4 rounded border-white/20 bg-white/10 text-pink-500 focus:ring-pink-500/50"
-                />
-                <span className="text-sm text-slate-300">Lookup MusicBrainz Metadata</span>
-              </label>
-            </div>
-          )}
 
           {/* Process Button */}
           <Button
             onClick={handleProcess}
             disabled={processing || !sourcePath}
             size="lg"
-            className={`w-full ${enhanceOnly 
-              ? 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600'
-              : 'bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600'
-            }`}
+            className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600"
           >
             {processing ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Processing Music...
+                Upmixing to 7.0 Surround...
               </>
             ) : (
               <>
                 <Play className="h-5 w-5" />
-                {enhanceOnly ? 'Enhance Audio' : 'Organize & Enhance Music'}
+                Upmix to 7.0 Surround
               </>
             )}
           </Button>
 
-          {/* Info */}
+          {/* Denon AVR Tips */}
           <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
             <h4 className="font-semibold text-white flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-blue-400" />
-              {enhanceOnly ? 'Enhance Only Mode:' : 'Organize & Enhance Mode:'}
+              <AlertCircle className="h-4 w-4 text-emerald-400" />
+              📺 Denon AVR Calibration Tips
             </h4>
-            {enhanceOnly ? (
-              <ul className="text-sm text-slate-400 space-y-1 ml-6 list-disc">
-                <li>Applies professional audio enhancement (EQ, loudness normalization)</li>
-                <li>Preserves your existing folder structure</li>
-                <li>Perfect for already-organized playlists or collections</li>
-                <li>Supports: FLAC, MP3, M4A, Opus, OGG, WAV</li>
-              </ul>
-            ) : (
-              <ul className="text-sm text-slate-400 space-y-1 ml-6 list-disc">
-                <li>Looks up metadata from MusicBrainz (artist, album, track #, year)</li>
-                <li>Organizes files to: <code className="text-pink-400">/Artist/Album (Year)/01 - Track.ext</code></li>
-                <li>Applies professional audio enhancement (EQ, loudness normalization)</li>
-                <li>Updates ID3/Vorbis tags with accurate metadata</li>
-                <li>Perfect for Plex, Jellyfin, Emby, and other media servers</li>
-              </ul>
-            )}
+            <ul className="text-sm text-slate-400 space-y-1 ml-6 list-disc">
+              <li>Channel Levels: Increase Surround/Back by <span className="text-cyan-400">+1.5dB to +2.0dB</span></li>
+              <li>Crossover: Set Front Speakers to <span className="text-cyan-400">"Large"</span> (no sub)</li>
+              <li>Plex: Use <span className="text-pink-400">"Direct Play"</span> for best quality</li>
+            </ul>
           </div>
         </CardContent>
       </Card>

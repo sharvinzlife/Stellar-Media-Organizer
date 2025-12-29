@@ -51,8 +51,8 @@ const MusicDownloadPanel: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [updatingTools, setUpdatingTools] = useState<boolean>(false);
   const [source, setSource] = useState<string>('auto');
-  const [audioFormat, setAudioFormat] = useState<string>('original');
-  const [preset, setPreset] = useState<string>('optimal');
+  const [audioFormat, setAudioFormat] = useState<string>('flac');
+  const [preset, setPreset] = useState<string>('surround_7_0');
   const [enhanceAudio, setEnhanceAudio] = useState<boolean>(true);
   const [lookupMetadata, setLookupMetadata] = useState<boolean>(true);
   const [toolsStatus, setToolsStatus] = useState<ToolsStatus | null>(null);
@@ -65,20 +65,11 @@ const MusicDownloadPanel: React.FC = () => {
   ];
 
   const presets = [
-    { id: 'optimal', name: '✨ Optimal', desc: 'Rich, loud, professional - best for most music' },
-    { id: 'clarity', name: '🎯 Clarity', desc: 'Crystal clear vocals and instruments' },
-    { id: 'bass_boost', name: '🔊 Bass Boost', desc: 'Deep, punchy bass with maintained clarity' },
-    { id: 'warm', name: '🌅 Warm', desc: 'Vintage analog warmth, fuller sound' },
-    { id: 'bright', name: '☀️ Bright', desc: 'Crisp, airy, sparkling highs' },
-    { id: 'flat', name: '📊 Flat', desc: 'Transparent, just loudness normalization' },
+    { id: 'surround_7_0', name: '🔊 7.0 Surround', desc: 'Upmix to 7.0 with timbre-matching for Polk T50 + Sony surrounds' },
   ];
 
   const formats = [
-    { id: 'original', name: 'Keep Original' },
-    { id: 'flac', name: 'FLAC (Lossless)' },
-    { id: 'mp3', name: 'MP3 (320kbps)' },
-    { id: 'm4a', name: 'M4A/AAC' },
-    { id: 'opus', name: 'Opus' },
+    { id: 'flac', name: 'FLAC (7.0 Surround)' },
   ];
 
   useEffect(() => {

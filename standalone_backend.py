@@ -101,7 +101,8 @@ GPU_SERVICE_URL = "http://localhost:8888"
 def get_default_media_path() -> str:
     env_path = os.getenv("MEDIA_PATH")
     if env_path:
-        return env_path
+        # Expand ~ and resolve path
+        return str(Path(env_path).expanduser().resolve())
     
     # Default to home directory
     home = Path.home()
@@ -122,6 +123,26 @@ def get_alldebrid_api_key():
     return key
 
 ALLDEBRID_API_KEY = get_alldebrid_api_key()
+
+# NAS Configuration
+def get_lharmony_host():
+    """Get Lharmony NAS host from environment or config."""
+    host = os.getenv("LHARMONY_HOST", "")
+    if not host and USE_CONFIG and settings:
+        host = getattr(settings, 'lharmony_host', '') or ''
+    return host
+
+LHARMONY_HOST = get_lharmony_host()
+
+# Plex Configuration
+def get_plex_enabled():
+    """Check if Plex is enabled from environment or config."""
+    enabled = os.getenv("PLEX_ENABLED", "").lower() in ('true', '1', 'yes')
+    if not enabled and USE_CONFIG and settings:
+        enabled = getattr(settings, 'plex_enabled', False)
+    return enabled
+
+PLEX_ENABLED = get_plex_enabled()
 
 
 # Pydantic Models
@@ -1392,7 +1413,7 @@ class MusicProcessRequest(BaseModel):
     """Request model for music processing"""
     source_path: str
     output_path: Optional[str] = None
-    preset: str = "optimal"  # optimal, clarity, bass_boost, warm, bright, flat
+    preset: str = "surround_7_0"  # 7.0 surround upmix with timbre-matching
     output_format: str = "keep"  # keep, flac, mp3, m4a
     enhance_audio: bool = True
     lookup_metadata: bool = True
@@ -1411,7 +1432,8 @@ class MusicProcessResponse(BaseModel):
 # MusicBrainz credentials from environment
 MUSICBRAINZ_CLIENT_ID = os.getenv("MUSICBRAINZ_CLIENT_ID", "")
 MUSICBRAINZ_CLIENT_SECRET = os.getenv("MUSICBRAINZ_CLIENT_SECRET", "")
-MUSIC_OUTPUT_PATH = os.getenv("MUSIC_OUTPUT_PATH", str(Path.home() / "Documents" / "Music"))
+_music_path = os.getenv("MUSIC_OUTPUT_PATH", str(Path.home() / "Documents" / "Music"))
+MUSIC_OUTPUT_PATH = str(Path(_music_path).expanduser().resolve())
 
 # Discogs API token
 DISCOGS_API_TOKEN = os.getenv("DISCOGS_API_TOKEN", "")
@@ -1424,21 +1446,13 @@ def process_music_background(job_id: int, request: MusicProcessRequest):
     db = get_db()
     
     try:
-        # Map preset string to enum
-        preset_map = {
-            'optimal': AudioPreset.OPTIMAL,
-            'clarity': AudioPreset.CLARITY,
-            'bass_boost': AudioPreset.BASS_BOOST,
-            'warm': AudioPreset.WARM,
-            'bright': AudioPreset.BRIGHT,
-            'flat': AudioPreset.FLAT,
-        }
-        preset = preset_map.get(request.preset, AudioPreset.OPTIMAL)
+        # Only 7.0 surround preset available
+        preset = AudioPreset.SURROUND_7_0
         
-        # Output format
-        output_format = None if request.output_format == 'keep' else request.output_format
+        # Output format - always FLAC for 7.0 surround (proper audio container)
+        output_format = 'flac'
         
-        add_job_log(job_id, f"Initializing Music Organizer...", "info")
+        add_job_log(job_id, f"Initializing Music Organizer (7.0 Surround)...", "info")
         
         # Initialize organizer
         organizer = MusicLibraryOrganizer(
@@ -1822,42 +1836,14 @@ async def get_music_presets():
     return {
         "presets": [
             {
-                "id": "optimal",
-                "name": "Optimal",
-                "description": "Balanced enhancement - bass +2dB, treble +2.5dB, clarity boost",
+                "id": "surround_7_0",
+                "name": "7.0 Surround",
+                "description": "Upmix to 7.0 with timbre-matching for Polk T50 + Sony surrounds",
                 "recommended": True
-            },
-            {
-                "id": "clarity",
-                "name": "Clarity",
-                "description": "Focus on vocals/instruments - high-mid boost, harmonic enhancement"
-            },
-            {
-                "id": "bass_boost",
-                "name": "Bass Boost",
-                "description": "Enhanced low frequencies - +5dB bass"
-            },
-            {
-                "id": "warm",
-                "name": "Warm",
-                "description": "Fuller, warmer sound profile"
-            },
-            {
-                "id": "bright",
-                "name": "Bright",
-                "description": "Crisp, enhanced highs"
-            },
-            {
-                "id": "flat",
-                "name": "Flat",
-                "description": "No EQ - just EBU R128 loudness normalization"
             }
         ],
         "formats": [
-            {"id": "keep", "name": "Keep Original", "description": "Preserve original format"},
-            {"id": "flac", "name": "FLAC", "description": "Lossless compression"},
-            {"id": "mp3", "name": "MP3", "description": "VBR highest quality"},
-            {"id": "m4a", "name": "M4A/AAC", "description": "320kbps AAC"}
+            {"id": "flac", "name": "FLAC (7.0 Surround)", "description": "Multi-channel lossless audio"}
         ]
     }
 
@@ -1909,20 +1895,12 @@ def enhance_music_background(job_id: int, request: MusicEnhanceRequest):
     db = get_db()
     
     try:
-        # Map preset string to enum
-        preset_map = {
-            'optimal': AudioPreset.OPTIMAL,
-            'clarity': AudioPreset.CLARITY,
-            'bass_boost': AudioPreset.BASS_BOOST,
-            'warm': AudioPreset.WARM,
-            'bright': AudioPreset.BRIGHT,
-            'flat': AudioPreset.FLAT,
-        }
-        preset = preset_map.get(request.preset, AudioPreset.OPTIMAL)
+        # Only 7.0 surround preset available
+        preset = AudioPreset.SURROUND_7_0
         
-        add_job_log(job_id, f"🎵 Initializing Audio Enhancer...", "info")
+        add_job_log(job_id, f"🔊 Initializing 7.0 Surround Upmixer...", "info")
         add_job_log(job_id, f"📁 Source: {request.source_path}", "info")
-        add_job_log(job_id, f"🎛️ Preset: {request.preset}", "info")
+        add_job_log(job_id, f"🎛️ Timbre-matching for Polk T50 + Sony surrounds", "info")
         
         # Initialize enhancer
         enhancer = AudioEnhancer()
@@ -2109,19 +2087,11 @@ def process_music_alldebrid_background(job_id: int, links: List[str], preset: st
             logger.info(f"[Job {job_id}] Downloads complete. Processing music files...")
             db.update_job_progress(job_id, progress=50, current_file="Processing music files...")
             
-            # Map preset string to enum
-            preset_map = {
-                'optimal': AudioPreset.OPTIMAL,
-                'clarity': AudioPreset.CLARITY,
-                'bass_boost': AudioPreset.BASS_BOOST,
-                'warm': AudioPreset.WARM,
-                'bright': AudioPreset.BRIGHT,
-                'flat': AudioPreset.FLAT,
-            }
-            audio_preset = preset_map.get(preset, AudioPreset.OPTIMAL)
+            # Only 7.0 surround preset available
+            audio_preset = AudioPreset.SURROUND_7_0
             
-            # Output format
-            out_format = None if output_format == 'keep' else output_format
+            # Output format - always FLAC for 7.0 surround (proper audio container)
+            out_format = 'flac'
             
             # Initialize organizer
             organizer = MusicLibraryOrganizer(
@@ -2376,15 +2346,8 @@ def process_music_download_background(
             # Use that metadata to organize into Plex/Jellyfin structure
             # No need for external API lookups!
             
-            preset_map = {
-                'optimal': AudioPreset.OPTIMAL,
-                'clarity': AudioPreset.CLARITY,
-                'bass_boost': AudioPreset.BASS_BOOST,
-                'warm': AudioPreset.WARM,
-                'bright': AudioPreset.BRIGHT,
-                'flat': AudioPreset.FLAT,
-            }
-            audio_preset = preset_map.get(preset, AudioPreset.OPTIMAL)
+            # Only 7.0 surround preset available
+            audio_preset = AudioPreset.SURROUND_7_0
             
             # Find all audio files
             audio_extensions = ['.flac', '.mp3', '.m4a', '.opus', '.ogg', '.wav', '.webm']
@@ -2392,12 +2355,12 @@ def process_music_download_background(
             
             add_job_log(job_id, f"📁 Found {len(audio_files)} audio files", "info")
             
-            # Initialize enhancer if needed
+            # Initialize enhancer for 7.0 surround upmix
             enhancer = None
             if enhance_audio:
                 try:
                     enhancer = AudioEnhancer()
-                    add_job_log(job_id, f"✅ Audio enhancement enabled (preset: {preset})", "info")
+                    add_job_log(job_id, f"🔊 7.0 Surround upmix enabled (Polk T50 + Sony timbre-matching)", "info")
                 except Exception as e:
                     add_job_log(job_id, f"⚠️ Audio enhancement unavailable: {e}", "warning")
             
@@ -2406,36 +2369,94 @@ def process_music_download_background(
             
             processed = 0
             total = len(audio_files)
+            processed_files_list = []
             
             for idx, audio_file in enumerate(audio_files, 1):
                 try:
                     # Preserve folder structure from spotdl (playlist/album name)
                     rel_path = audio_file.relative_to(temp_dir)
-                    output_path = output_base / rel_path
+                    
+                    # Output as .flac for 7.0 surround
+                    if enhance_audio and enhancer:
+                        output_path = output_base / rel_path.with_suffix('.flac')
+                    else:
+                        output_path = output_base / rel_path
+                    
                     output_path.parent.mkdir(parents=True, exist_ok=True)
                     
                     # Get display name from filename
                     display_name = audio_file.stem
                     
-                    # Process file (enhance or copy)
+                    # Process file (7.0 surround upmix or copy)
                     if enhance_audio and enhancer:
-                        add_job_log(job_id, f"🎵 ({idx}/{total}) Enhancing: {display_name}", "info")
+                        add_job_log(job_id, f"🔊 ({idx}/{total}) Upmixing to 7.0: {display_name}", "info")
                         success = enhancer.enhance_audio(str(audio_file), str(output_path), preset=audio_preset)
                         if not success or not output_path.exists() or output_path.stat().st_size == 0:
-                            add_job_log(job_id, f"⚠️ Enhancement failed, copying original", "warning")
+                            add_job_log(job_id, f"⚠️ Upmix failed, copying original FLAC", "warning")
+                            output_path = output_base / rel_path  # Keep original extension
                             shutil.copy2(str(audio_file), str(output_path))
                     else:
                         add_job_log(job_id, f"📁 ({idx}/{total}) {display_name}", "info")
                         shutil.copy2(str(audio_file), str(output_path))
                     
+                    processed_files_list.append(output_path)
                     processed += 1
                     
-                    # Update progress (50-95% for organizing)
-                    progress = 50 + (idx / total) * 45
+                    # Update progress (50-80% for processing)
+                    progress = 50 + (idx / total) * 30
                     db.update_job_progress(job_id, progress=progress, current_file=display_name, processed_files=processed)
                     
                 except Exception as e:
                     add_job_log(job_id, f"❌ Error processing {audio_file.name}: {e}", "error")
+            
+            # Transfer to NAS if configured (Lharmony for music)
+            nas_transfer_success = False
+            if LHARMONY_HOST and processed_files_list:
+                add_job_log(job_id, f"📤 Transferring {len(processed_files_list)} files to NAS (Lharmony)...", "info")
+                db.update_job_progress(job_id, progress=85, current_file="Transferring to NAS...")
+                
+                try:
+                    from core.nas_transfer import NASTransfer
+                    nas = NASTransfer()
+                    
+                    # Transfer each processed file to music folder
+                    transferred = 0
+                    for file_path in processed_files_list:
+                        try:
+                            rel_path = file_path.relative_to(output_base)
+                            nas_dest = f"/music/{rel_path}"
+                            
+                            if nas.transfer_file(str(file_path), nas_dest, nas_name="lharmony"):
+                                transferred += 1
+                                add_job_log(job_id, f"✅ Transferred: {file_path.name}", "info")
+                            else:
+                                add_job_log(job_id, f"⚠️ Failed to transfer: {file_path.name}", "warning")
+                        except Exception as e:
+                            add_job_log(job_id, f"⚠️ Transfer error for {file_path.name}: {e}", "warning")
+                    
+                    nas_transfer_success = transferred > 0
+                    add_job_log(job_id, f"📤 NAS transfer complete: {transferred}/{len(processed_files_list)} files", "info")
+                    
+                except Exception as e:
+                    add_job_log(job_id, f"⚠️ NAS transfer failed: {e}", "warning")
+            
+            # Trigger Plex music library scan if transfer succeeded
+            if nas_transfer_success and PLEX_ENABLED:
+                add_job_log(job_id, f"🎬 Triggering Plex music library scan...", "info")
+                db.update_job_progress(job_id, progress=95, current_file="Scanning Plex library...")
+                
+                try:
+                    from core.plex_client import PlexClient
+                    plex = PlexClient()
+                    
+                    # Scan music library
+                    if plex.scan_library("Music"):
+                        add_job_log(job_id, f"✅ Plex music library scan started", "success")
+                    else:
+                        add_job_log(job_id, f"⚠️ Plex scan may have failed", "warning")
+                        
+                except Exception as e:
+                    add_job_log(job_id, f"⚠️ Plex scan error: {e}", "warning")
             
             # Complete
             db.update_job_status(job_id, status=JobStatus.COMPLETED)
@@ -2446,6 +2467,11 @@ def process_music_download_background(
                 if job:
                     job.total_files = total
                     session.commit()
+            
+            summary = f"✅ Processed {processed}/{total} files"
+            if nas_transfer_success:
+                summary += " → NAS (Lharmony)"
+            add_job_log(job_id, summary, "success")
             
                 
     except Exception as e:

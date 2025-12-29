@@ -29,23 +29,15 @@ const MusicAllDebridPanel: React.FC = () => {
   const [links, setLinks] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [configured, setConfigured] = useState<boolean>(false);
-  const [preset, setPreset] = useState<string>('optimal');
+  const [preset, setPreset] = useState<string>('surround_7_0');
   const [outputFormat, setOutputFormat] = useState<string>('flac');
 
   const presets: Preset[] = [
-    { id: 'optimal', name: 'Optimal' },
-    { id: 'clarity', name: 'Clarity' },
-    { id: 'bass_boost', name: 'Bass Boost' },
-    { id: 'warm', name: 'Warm' },
-    { id: 'bright', name: 'Bright' },
-    { id: 'flat', name: 'Flat' },
+    { id: 'surround_7_0', name: '🔊 7.0 Surround' },
   ];
 
   const formats = [
-    { id: 'keep', name: 'Keep Original' },
-    { id: 'flac', name: 'FLAC' },
-    { id: 'mp3', name: 'MP3' },
-    { id: 'm4a', name: 'M4A' },
+    { id: 'flac', name: 'FLAC (7.0 Surround)' },
   ];
 
   useEffect(() => {

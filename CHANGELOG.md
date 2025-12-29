@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.1] - 2025-12-29 🎵
+
+### 🎵 Music Downloads
+- **Spotify Python 3.12 Fix** - Fixed spotdl asyncio compatibility issues with Python 3.14+
+  - Created dedicated `.venv-spotdl` with Python 3.12 for spotdl
+  - Updated `music_downloader.py` to use Python 3.12 venv for Spotify downloads
+  - Spotify playlists now work correctly without asyncio errors
+- **Audio Format Fix** - Changed default from MKV (video) to FLAC (audio) everywhere
+- **Various Artists Handling** - Never use "V.A." in folder names, use album name instead
+- **Metadata Correction** - Auto-fix V.A. ALBUMARTIST tags to show album name in Plex
+
+---
+
 ## [3.2.0] - 2025-12-28 🎬
 
 ### 🎬 Plex Integration

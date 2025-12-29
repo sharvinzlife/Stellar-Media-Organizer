@@ -75,7 +75,7 @@ const AllDebridPanel: React.FC = () => {
   const [nasLocations, setNasLocations] = useState<NASLocation[]>([]);
   const [selectedNAS, setSelectedNAS] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [localPath, setLocalPath] = useState<string>('/Users/sharvin/Documents/Processed');
+  const [localPath, setLocalPath] = useState<string>('');
   
   // Enhanced progress tracking
   const [detectedCategory, setDetectedCategory] = useState<string | null>(null);
