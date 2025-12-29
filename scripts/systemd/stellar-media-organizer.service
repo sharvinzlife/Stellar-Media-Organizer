@@ -1,0 +1,47 @@
+[Unit]
+Description=Stellar Media Organizer - All Services
+Documentation=https://github.com/your-repo/stellar-media-organizer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=sharvinzlife
+Group=sharvinzlife
+WorkingDirectory=/home/sharvinzlife/projects/Stellar-Media-Organizer
+
+# Environment
+Environment="PATH=/home/sharvinzlife/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=/home/sharvinzlife"
+EnvironmentFile=-/home/sharvinzlife/projects/Stellar-Media-Organizer/config.env
+
+# Start command - uses the unified service manager
+ExecStart=/home/sharvinzlife/projects/Stellar-Media-Organizer/scripts/stellar-service.sh start
+ExecStop=/home/sharvinzlife/projects/Stellar-Media-Organizer/scripts/stellar-service.sh stop
+ExecReload=/home/sharvinzlife/projects/Stellar-Media-Organizer/scripts/stellar-service.sh restart
+
+# Restart policy - auto-restart on failure
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Watchdog - systemd will restart if service doesn't respond
+WatchdogSec=60
+
+# Timeouts
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening (optional - comment out if causing issues)
+# ProtectSystem=strict
+# ProtectHome=read-only
+# PrivateTmp=true
+# NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

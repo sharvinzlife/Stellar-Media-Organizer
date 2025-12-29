@@ -52,8 +52,28 @@ class Settings(BaseSettings):
     # AllDebrid API Key
     alldebrid_api_key: Optional[str] = Field(default=None, alias="ALLDEBRID_API_KEY")
     
+    # TMDB API Credentials
+    tmdb_access_token: Optional[str] = Field(default=None, alias="TMDB_ACCESS_TOKEN")
+    tmdb_api_key: Optional[str] = Field(default=None, alias="TMDB_API_KEY")
+    
+    # OMDB API Key (for IMDB lookups - primary source)
+    omdb_api_key: Optional[str] = Field(default=None, alias="OMDB_API_KEY")
+    
+    # Plex Media Server Settings
+    plex_enabled: bool = Field(default=False, alias="PLEX_ENABLED")
+    plex_server_url: Optional[str] = Field(default=None, alias="PLEX_SERVER_URL")
+    plex_token: Optional[str] = Field(default=None, alias="PLEX_TOKEN")
+    plex_external_url: Optional[str] = Field(default=None, alias="PLEX_EXTERNAL_URL")
+    plex_auto_scan: bool = Field(default=True, alias="PLEX_AUTO_SCAN")
+    plex_auto_match: bool = Field(default=True, alias="PLEX_AUTO_MATCH")
+    
+    # Tautulli Settings
+    tautulli_enabled: bool = Field(default=False, alias="TAUTULLI_ENABLED")
+    tautulli_url: Optional[str] = Field(default=None, alias="TAUTULLI_URL")
+    tautulli_api_key: Optional[str] = Field(default=None, alias="TAUTULLI_API_KEY")
+    
     class Config:
-        env_file = ["../../config.env", ".env"]
+        env_file = ["../../../../config.env", "../../config.env", ".env"]
         case_sensitive = False
         populate_by_name = True
         extra = "ignore"

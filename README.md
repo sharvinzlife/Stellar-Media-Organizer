@@ -228,6 +228,48 @@ See [config.env.example](config.env.example) for all options.
 | ⚡ Backend | `8000` | FastAPI server |
 | 🎮 GPU | `8888` | Video conversion |
 
+### 🛡️ Service Manager
+
+Stellar includes a robust service manager with watchdog functionality:
+
+```bash
+# Start all services (kills existing, starts fresh)
+./scripts/stellar-service.sh start
+
+# Stop all services
+./scripts/stellar-service.sh stop
+
+# Restart all services
+./scripts/stellar-service.sh restart
+
+# Check service status
+./scripts/stellar-service.sh status
+
+# Start with watchdog (auto-restart on crash)
+./scripts/stellar-service.sh watch
+
+# View logs
+./scripts/stellar-service.sh logs        # All logs
+./scripts/stellar-service.sh logs api    # API only
+./scripts/stellar-service.sh logs gpu    # GPU only
+./scripts/stellar-service.sh logs frontend  # Frontend only
+```
+
+### ⚙️ Auto-Start on Boot (systemd)
+
+```bash
+# Install systemd service
+./scripts/install-service.sh
+
+# Enable auto-start
+sudo systemctl enable stellar-media-organizer
+
+# Manual control
+sudo systemctl start stellar-media-organizer
+sudo systemctl stop stellar-media-organizer
+sudo systemctl status stellar-media-organizer
+```
+
 ---
 
 ## 💻 CLI Usage
@@ -297,7 +339,115 @@ python music_downloader.py "https://open.spotify.com/playlist/..."
 
 ---
 
+## 🏗️ Architecture
+
+```mermaid
+flowchart TB
+    subgraph Client["🌐 Web Browser"]
+        UI["⚛️ React Frontend<br/>:5173"]
+    end
+
+    subgraph Services["🖥️ Backend Services"]
+        API["⚡ FastAPI Backend<br/>:8000"]
+        GPU["🎮 GPU Service<br/>:8888"]
+    end
+
+    subgraph External["🌍 External APIs"]
+        OMDB["🎬 OMDB/IMDB<br/>(Primary)"]
+        TMDB["📺 TMDB<br/>(Fallback)"]
+        AD["☁️ AllDebrid"]
+        MB["🎵 MusicBrainz"]
+        SP["🎧 Spotify"]
+    end
+
+    subgraph Storage["💾 Storage"]
+        NAS1["📦 Synology NAS<br/>(Lharmony)"]
+        NAS2["📦 Unraid NAS<br/>(Streamwave)"]
+        LOCAL["📁 Local Storage"]
+    end
+
+    subgraph MediaServer["📺 Media Servers"]
+        PLEX["🎬 Plex"]
+        JELLY["🟣 Jellyfin"]
+    end
+
+    subgraph Watchdog["🛡️ Service Manager"]
+        SM["stellar-service.sh"]
+        SD["systemd"]
+    end
+
+    UI <-->|"REST API"| API
+    API <-->|"Video Jobs"| GPU
+    API -->|"Metadata Lookup"| OMDB
+    API -->|"Episode Titles"| TMDB
+    API -->|"Download Links"| AD
+    API -->|"Music Metadata"| MB
+    API -->|"Playlists"| SP
+    API -->|"SMB Transfer"| NAS1
+    API -->|"SMB Transfer"| NAS2
+    API -->|"Local Files"| LOCAL
+    API -->|"Library Scan"| PLEX
+    NAS1 -.->|"Media Library"| PLEX
+    NAS2 -.->|"Media Library"| JELLY
+    SM -->|"Health Checks"| API
+    SM -->|"Health Checks"| GPU
+    SM -->|"Health Checks"| UI
+    SD -->|"Auto-Start"| SM
+```
+
+### 📊 Data Flow
+
+```mermaid
+sequenceDiagram
+    participant U as 👤 User
+    participant F as ⚛️ Frontend
+    participant B as ⚡ Backend
+    participant AD as ☁️ AllDebrid
+    participant OMDB as 🎬 OMDB
+    participant NAS as 📦 NAS
+    participant P as 🎬 Plex
+
+    U->>F: Paste AllDebrid Link
+    F->>B: POST /api/v1/alldebrid
+    B->>AD: Unlock Link
+    AD-->>B: Direct Download URL
+    B->>B: Download via aria2c
+    B->>OMDB: Lookup Movie/Series
+    OMDB-->>B: IMDB ID + Metadata
+    B->>B: Rename: Movie (Year) {imdb-tt123}.mkv
+    B->>B: Create .nfo files
+    B->>B: Filter Audio Tracks
+    B->>NAS: SMB Transfer
+    NAS-->>B: Transfer Complete
+    B->>P: Trigger Library Scan
+    P-->>B: Scan Started
+    B-->>F: Job Complete
+    F-->>U: ✅ Success Notification
+```
+
+---
+
 ## 📝 Changelog
+
+### v3.2.0 - *Plex Integration & Service Manager* 🎬 (December 2025)
+
+#### 🎬 Plex Integration
+- 📺 **Plex Dashboard** - New dedicated Plex tab for library management
+- 🔗 **Plex API Client** - Full integration for library scanning and status
+- 📊 **Tautulli Support** - Activity monitoring and statistics (optional)
+- 🔄 **Auto Plex Scan** - Automatic library scan after NAS transfers
+
+#### 🔧 Smart Renaming & NFO Files
+- 🎯 **IMDB Primary** - OMDB (IMDB) as PRIMARY source, TMDB as fallback
+- 📁 **Plex Naming** - `Movie Name (Year) {imdb-tt1234567}.mkv`
+- 📄 **NFO Files** - Two variations for maximum Plex compatibility
+- 🧠 **Smart Detection** - Only defaults to Malayalam when NO metadata found
+
+#### 🛡️ Robust Service Management
+- 🚀 **Unified Service Manager** - `scripts/stellar-service.sh` with nuclear cleanup
+- 👁️ **Watchdog Mode** - Auto-restart on crash with health checks
+- ⚙️ **Systemd Service** - Auto-start on boot support
+- 🔒 **No Port Conflicts** - Always kills existing processes before starting
 
 ### v3.0.0 - *NAS Integration & UI Overhaul* 🚀 (December 2025)
 

@@ -31,10 +31,37 @@ export interface UploadResult {
   upload_dir: string;
 }
 
+export interface JobFileSummary {
+  name?: string;
+  original?: string;
+  renamed?: string;
+  destination?: string;
+  size_mb?: number;
+  size_before_mb?: number;
+  size_after_mb?: number;
+  space_saved_mb?: number;
+  speed_mbps?: number;
+  category?: string;
+  status?: string;
+  filtered?: boolean;
+}
+
+export interface JobSummary {
+  total_files: number;
+  downloaded: number;
+  renamed: number;
+  transferred: number;
+  failed: number;
+  filtered: number;
+  total_size_mb: number;
+  space_saved_mb?: number;
+  files: JobFileSummary[];
+}
+
 export interface Job {
   id: number;
   job_type: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
   input_path: string;
   output_path?: string;
   filename?: string;
@@ -42,13 +69,22 @@ export interface Job {
   volume_boost?: number;
   progress: number;
   current_file?: string;
+  current_status?: string;
   total_files?: number;
   processed_files?: number;
   error_message?: string;
   created_at: string;
   updated_at?: string;
+  started_at?: string;
   completed_at?: string;
   duration?: number;
+  // Detailed tracking
+  summary?: JobSummary;
+  detected_category?: string;
+  nas_destination?: {
+    nas_name: string;
+    category: string;
+  };
 }
 
 export interface JobStats {

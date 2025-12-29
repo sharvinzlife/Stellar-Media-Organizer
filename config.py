@@ -4,7 +4,7 @@ Configuration Management for Media Organizer Pro
 Uses pydantic-settings for type-safe configuration with environment variable support
 """
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, validator
 
@@ -109,6 +109,67 @@ class Settings(BaseSettings):
     streamwave_password: Optional[str] = Field(default=None, description="Streamwave password")
     streamwave_share: str = Field(default="Data-Streamwave", description="Streamwave share name")
     streamwave_media_path: str = Field(default="/media", description="Streamwave media path")
+    
+    # ========== Plex Media Server Settings ==========
+    plex_enabled: bool = Field(
+        default=False,
+        description="Enable Plex integration"
+    )
+    plex_server_url: Optional[str] = Field(
+        default=None,
+        description="Plex server URL (e.g., http://192.168.1.100:32400)"
+    )
+    plex_token: Optional[str] = Field(
+        default=None,
+        description="Plex authentication token"
+    )
+    plex_external_url: Optional[str] = Field(
+        default=None,
+        description="External Plex URL (e.g., Cloudflare tunnel)"
+    )
+    plex_auto_scan: bool = Field(
+        default=True,
+        description="Automatically scan library after file transfer"
+    )
+    plex_auto_match: bool = Field(
+        default=True,
+        description="Automatically match metadata with IMDB after scan"
+    )
+    
+    # Plex Library Mappings (NAS folder -> Plex library name)
+    # These map the NAS destination folders to Plex library names for auto-scanning
+    plex_library_map: Dict[str, str] = Field(
+        default={
+            'movies': 'Movies',
+            'malayalam movies': 'Malayalam Movies',
+            'bollywood movies': 'Bollywood Movies',
+            'tv': 'TV Shows',
+            'tv-shows': 'TV Shows',
+            'malayalam tv shows': 'Malayalam TV Shows',
+            'malayalam-tv-shows': 'Malayalam TV Shows',
+        },
+        description="Mapping of NAS folders to Plex library names"
+    )
+    
+    # ========== Tautulli Settings ==========
+    tautulli_enabled: bool = Field(
+        default=False,
+        description="Enable Tautulli integration"
+    )
+    tautulli_url: Optional[str] = Field(
+        default=None,
+        description="Tautulli server URL (e.g., http://192.168.1.100:8181)"
+    )
+    tautulli_api_key: Optional[str] = Field(
+        default=None,
+        description="Tautulli API key"
+    )
+    
+    # ========== AllDebrid Settings ==========
+    alldebrid_api_key: Optional[str] = Field(
+        default=None,
+        description="AllDebrid API key for downloading"
+    )
     
     # ========== Processing Settings ==========
     max_upload_size: int = Field(

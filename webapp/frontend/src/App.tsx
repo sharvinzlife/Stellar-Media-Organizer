@@ -14,11 +14,12 @@ import MusicOrganizer from './components/MusicOrganizer';
 import MusicDownloadPanel from './components/MusicDownloadPanel';
 import MusicActivityDashboard from './components/MusicActivityDashboard';
 import NASPanel from './components/NASPanel';
+import PlexDashboard from './components/PlexDashboard';
 import { Card, CardContent } from './components/ui/Card';
-import { FolderTree, Music, Music2, Zap, CheckCircle, XCircle, Film, LucideIcon } from 'lucide-react';
+import { FolderTree, Music, Music2, Zap, CheckCircle, XCircle, Film, MonitorPlay, LucideIcon } from 'lucide-react';
 import type { ProcessResult, UploadResult } from './types';
 
-type TabType = 'video' | 'music';
+type TabType = 'video' | 'music' | 'plex';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('video');
@@ -85,6 +86,13 @@ const App: React.FC = () => {
               <Music className={`h-6 w-6 tab-toggle-icon ${activeTab === 'music' ? 'text-white' : ''}`} />
               <span>Music</span>
             </button>
+            <button
+              onClick={() => setActiveTab('plex')}
+              className={`tab-toggle-btn ${activeTab === 'plex' ? 'active plex' : ''}`}
+            >
+              <MonitorPlay className={`h-6 w-6 tab-toggle-icon ${activeTab === 'plex' ? 'text-white' : ''}`} />
+              <span>Plex</span>
+            </button>
           </div>
         </div>
 
@@ -123,12 +131,16 @@ const App: React.FC = () => {
               <JobHistory />
             </div>
 
+            {/* Activity Logs - Right after Job History for easy viewing */}
+            <div className="mb-8 animate-fade-up">
+              <LogViewer />
+            </div>
+
             {/* Main Content Grid */}
             <div className="grid lg:grid-cols-3 gap-6 mb-8 animate-fade-up">
               <div className="lg:col-span-2 space-y-6">
                 <AllDebridPanel />
                 <OperationPanel onProcessComplete={handleProcessComplete} />
-                <LogViewer />
                 <FileUpload onUploadComplete={handleUploadComplete} />
               </div>
               <div className="space-y-6">
@@ -237,6 +249,13 @@ const App: React.FC = () => {
                 <StatusCard />
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Plex Tab Content */}
+        {activeTab === 'plex' && (
+          <div className="animate-fade-up">
+            <PlexDashboard />
           </div>
         )}
       </main>

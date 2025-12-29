@@ -103,8 +103,9 @@ def get_default_media_path() -> str:
     if env_path:
         return env_path
     
-    # Default to /Users/sharvin/Documents/Processed
-    return "/Users/sharvin/Documents/Processed"
+    # Default to home directory
+    home = Path.home()
+    return str(home / "Documents" / "Processed")
 
 
 DEFAULT_MEDIA_PATH = get_default_media_path()
@@ -112,8 +113,15 @@ DEFAULT_MEDIA_PATH = get_default_media_path()
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).parent / "uploads"))).expanduser().resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# AllDebrid API key (set via environment variable)
-ALLDEBRID_API_KEY = os.getenv("ALLDEBRID_API_KEY", "")
+# AllDebrid API key (set via environment variable or config)
+def get_alldebrid_api_key():
+    """Get AllDebrid API key from environment or config."""
+    key = os.getenv("ALLDEBRID_API_KEY", "")
+    if not key and USE_CONFIG and settings:
+        key = getattr(settings, 'alldebrid_api_key', '') or ''
+    return key
+
+ALLDEBRID_API_KEY = get_alldebrid_api_key()
 
 
 # Pydantic Models
@@ -123,11 +131,18 @@ class VideoConversionRequest(BaseModel):
     preset: str = 'hevc_best'
 
 
+class NASDestination(BaseModel):
+    nas_name: str
+    category: str
+
+
 class AllDebridRequest(BaseModel):
     links: List[str]
     output_path: Optional[str] = None
     language: Optional[str] = 'malayalam'
     download_only: Optional[bool] = False
+    auto_detect_language: Optional[bool] = True
+    nas_destination: Optional[NASDestination] = None
 
 
 class ProcessedFileInfo(BaseModel):
@@ -156,7 +171,7 @@ class VideoConversionResponse(BaseModel):
 class ProcessRequest(BaseModel):
     operation: str
     directory_path: str
-    output_path: Optional[str] = '/Users/sharvin/Documents/Processed'
+    output_path: Optional[str] = None
     target_language: Optional[str] = 'malayalam'
     volume_boost: Optional[float] = 1.0
 
@@ -425,9 +440,23 @@ async def upload_files(files: List[UploadFile] = File(...)):
     }
 
 
-def run_alldebrid_download(job_id: int, links: List[str], output_path: str, language: str, download_only: bool):
-    """Run AllDebrid download in background thread."""
+def run_alldebrid_download(job_id: int, links: List[str], output_path: str, language: str, download_only: bool, nas_destination: dict = None, auto_detect_language: bool = True):
+    """Run AllDebrid download in background thread with NAS transfer and enhanced progress tracking."""
+    import time
+    import shutil
+    import subprocess
+    
     db = get_db()
+    start_time = time.time()
+    
+    # Store job info for category detection and tracking
+    job_info = {
+        'filter_language': language,
+        'detected_category': None,
+        'renamed_count': 0,
+        'filtered_count': 0,
+        'metadata_found': False,
+    }
     
     try:
         from alldebrid_downloader import AllDebridDownloader
@@ -439,50 +468,398 @@ def run_alldebrid_download(job_id: int, links: List[str], output_path: str, lang
             db.update_job_status(job_id, JobStatus.FAILED, error_message="API key not configured")
             return
         
-        # Track current file being downloaded
-        current_download_file = ["Initializing..."]
+        # Always download to temp first
+        temp_output = f"/tmp/alldebrid_downloads/{job_id}"
+        Path(temp_output).mkdir(parents=True, exist_ok=True)
         
-        # Progress callback to update job logs AND database progress in real-time
+        # Update phase: downloading
+        db.update_job_phase(job_id, phase="downloading")
+        
+        if nas_destination:
+            nas_dest_str = f"{nas_destination.get('nas_name')}/{nas_destination.get('category')}"
+            add_job_log(job_id, f"📁 NAS destination: {nas_dest_str}", "info")
+            db.update_job_phase(job_id, phase="downloading", nas_destination=nas_dest_str)
+        
+        # Enhanced progress callback with phase tracking
         def progress_callback(message: str, level: str = "info"):
-            add_job_log(job_id, message, level)
-            
-            # Parse progress percentage from aria2c output (e.g., "📊 67% - [#f0da72 1.4GiB/2.1GiB(67%)")
-            percent_match = re.search(r'(\d+)%', message)
+            # Strip ANSI escape codes from aria2c output
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|\[\d+;\d+m|\[\d+m')
+            clean_message = ansi_escape.sub('', message)
+            add_job_log(job_id, clean_message, level)
+            percent_match = re.search(r'(\d+)%', clean_message)
             if percent_match:
                 percent = int(percent_match.group(1))
-                # Scale download progress to 5-80% range (leave room for organizing)
-                scaled_progress = 5 + (percent * 0.75)  # 5% to 80%
-                db.update_job_progress(job_id, scaled_progress, current_file=current_download_file[0])
+                scaled_progress = 5 + (percent * 0.45)  # 5% to 50% for download
+                db.update_job_progress(job_id, scaled_progress)
             
-            # Track filename being downloaded
-            if "Downloading:" in message:
-                filename = message.split("Downloading:")[-1].strip()[:60]
-                current_download_file[0] = f"⬇️ {filename}"
-                db.update_job_progress(job_id, 10.0, current_file=current_download_file[0])
-            elif "Unlocking" in message or "Unlocked" in message:
+            if "Downloading:" in clean_message:
+                filename = clean_message.split("Downloading:")[-1].strip()[:60]
+                db.update_job_progress(job_id, 10.0, current_file=f"⬇️ {filename}")
+            elif "Unlocking" in clean_message:
                 db.update_job_progress(job_id, 5.0, current_file="🔓 Unlocking links...")
-            elif "Downloaded:" in message:
-                db.update_job_progress(job_id, 80.0, current_file="✅ Download complete, organizing...")
+            elif "Renamed:" in clean_message or "renamed" in clean_message.lower():
+                job_info['renamed_count'] += 1
+                db.update_job_phase(job_id, phase="organizing", renamed_files=job_info['renamed_count'])
+            elif "Filtered:" in clean_message or "audio" in clean_message.lower():
+                job_info['filtered_count'] += 1
+                db.update_job_phase(job_id, phase="filtering", filtered_files=job_info['filtered_count'])
+            elif "IMDB:" in clean_message:
+                # IMDB metadata was found (primary source)
+                job_info['metadata_found'] = True
+                db.update_job_phase(job_id, phase="organizing", metadata_found="yes")
+            elif "TMDB:" in clean_message:
+                # TMDB metadata was found (fallback source)
+                job_info['metadata_found'] = True
+                db.update_job_phase(job_id, phase="organizing", metadata_found="yes")
+            elif "No IMDB/TMDB metadata found" in clean_message or "not configured" in clean_message.lower():
+                # No metadata found - will default to Malayalam
+                job_info['metadata_found'] = False
+                db.update_job_phase(job_id, phase="organizing", metadata_found="no")
         
         add_job_log(job_id, f"🚀 Starting AllDebrid download of {len(links)} links...", "info")
         db.update_job_progress(job_id, 5.0, current_file=f"Unlocking {len(links)} links...")
         
-        downloader = AllDebridDownloader(api_key, progress_callback=progress_callback)
+        # Get API keys from settings or env
+        tmdb_token = os.getenv("TMDB_ACCESS_TOKEN") or (settings.tmdb_access_token if USE_CONFIG and settings else None)
+        tmdb_api_key = os.getenv("TMDB_API_KEY") or (settings.tmdb_api_key if USE_CONFIG and settings else None)
+        omdb_api_key = os.getenv("OMDB_API_KEY") or (settings.omdb_api_key if USE_CONFIG and settings else None)
+        
+        downloader = AllDebridDownloader(
+            api_key,
+            download_dir=temp_output,
+            tmdb_token=tmdb_token,
+            tmdb_api_key=tmdb_api_key,
+            omdb_api_key=omdb_api_key,
+            progress_callback=progress_callback
+        )
+        
+        # Log metadata source
+        if omdb_api_key:
+            add_job_log(job_id, '🎬 IMDB (primary) + TMDB (fallback) enabled', 'info')
+        else:
+            add_job_log(job_id, '⚠️ No IMDB/TMDB API keys - will default to Malayalam library', 'warning')
+        
+        lang_to_use = None if auto_detect_language else language
+        add_job_log(job_id, f'🎬 Language: {"Auto-detect" if auto_detect_language else language}', 'info')
         
         if download_only:
             downloaded = downloader.download_links(links)
             add_job_log(job_id, f"✅ Downloaded {len(downloaded)} files", "success")
-            db.update_job_status(job_id, JobStatus.COMPLETED)
-            db.update_job_progress(job_id, 100.0, processed_files=len(downloaded))
+            db.update_job_phase(job_id, phase="completed")
         else:
-            results = downloader.download_and_organize(links, output_path, language)
-            add_job_log(job_id, f"✅ Complete! Downloaded: {len(results['downloaded'])}, Organized: {len(results['organized'])}, Filtered: {len(results['filtered'])}", "success")
-            db.update_job_status(job_id, JobStatus.COMPLETED)
-            db.update_job_progress(job_id, 100.0, processed_files=len(results['downloaded']))
+            add_job_log(job_id, '🔄 Download + Smart Organize mode', 'info')
+            
+            # Update phase: filtering
+            db.update_job_phase(job_id, phase="filtering")
+            db.update_job_progress(job_id, 50.0, current_file="🎵 Filtering audio tracks...")
+            
+            results = downloader.download_and_organize_smart(
+                links, 
+                temp_output, 
+                language=lang_to_use or 'malayalam',
+                filter_audio=True
+            )
+            downloaded_count = len(results.get('downloaded', []))
+            renamed_count = len(results.get('renamed', []))
+            filtered_count = len(results.get('filtered', []))
+            metadata_found_in_results = results.get('metadata_found', False)
+            
+            # Update job_info with actual metadata status from renamer
+            job_info['metadata_found'] = metadata_found_in_results
+            
+            # Update tracking
+            db.update_job_phase(
+                job_id, 
+                phase="organizing",
+                renamed_files=renamed_count,
+                filtered_files=filtered_count,
+                metadata_found="yes" if metadata_found_in_results else "no"
+            )
+            
+            add_job_log(job_id, f"✅ Downloaded: {downloaded_count}, Renamed: {renamed_count}, Filtered: {filtered_count}", 'success')
+            if metadata_found_in_results:
+                add_job_log(job_id, '✅ IMDB/TMDB metadata found - using detected category', 'success')
+            else:
+                add_job_log(job_id, '⚠️ No IMDB/TMDB metadata found - will use Malayalam library', 'warning')
+            db.update_job_progress(job_id, 75.0, current_file="✅ Processing complete")
+            
+            # If no metadata found, default to Malayalam
+            if not metadata_found_in_results:
+                db.update_job_phase(job_id, phase="organizing", detected_category="malayalam movies")
+                job_info['detected_category'] = 'malayalam movies'
+        
+        # Transfer to NAS if destination specified
+        if nas_destination:
+            nas_name = nas_destination.get('nas_name')
+            category = nas_destination.get('category')
+            
+            # Update phase: uploading
+            db.update_job_phase(job_id, phase="uploading")
+            add_job_log(job_id, f'📤 Transferring to NAS: {nas_name}...', 'info')
+            db.update_job_progress(job_id, 80.0, current_file=f'📤 Uploading to {nas_name}...')
+            
+            nas_result = transfer_to_nas_standalone(
+                temp_output, nas_name, category, 
+                lambda msg, lvl: add_job_log(job_id, msg, lvl),
+                job_info, language
+            )
+            
+            if nas_result:
+                detected_cat = job_info.get('detected_category', category)
+                final_destination = f"{nas_name}/{detected_cat}"
+                
+                add_job_log(job_id, f'✅ Transferred to {final_destination}', 'success')
+                db.update_job_phase(
+                    job_id, 
+                    phase="scanning",
+                    nas_destination=final_destination,
+                    detected_category=detected_cat
+                )
+                db.update_job_progress(job_id, 90.0, current_file='🧹 Cleaning up...')
+                
+                # Clean up temp
+                add_job_log(job_id, '🧹 Cleaning up temp files...', 'info')
+                shutil.rmtree(temp_output, ignore_errors=True)
+                
+                # Trigger Plex scan with enhanced tracking
+                plex_enabled = os.getenv('PLEX_ENABLED', '').lower() in ('true', '1', 'yes')
+                if not plex_enabled and USE_CONFIG and settings:
+                    plex_enabled = getattr(settings, 'plex_enabled', False)
+                
+                if plex_enabled:
+                    try:
+                        plex = get_plex_client()
+                        if plex:
+                            # Map category to library
+                            lib_map = {
+                                'movies': 'Movies', 
+                                'malayalam movies': 'Malayalam Movies',
+                                'bollywood movies': 'Bollywood Movies', 
+                                'tv-shows': 'TV Shows',
+                                'tv': 'TV Shows', 
+                                'malayalam-tv-shows': 'Malayalam TV Shows',
+                                'malayalam tv shows': 'Malayalam TV Shows',
+                            }
+                            lib_name = lib_map.get(detected_cat.lower(), detected_cat)
+                            lib = plex.get_library_by_name(lib_name)
+                            
+                            if lib:
+                                db.update_job_phase(
+                                    job_id, 
+                                    phase="scanning",
+                                    plex_scan_status="scanning",
+                                    plex_library_name=lib_name
+                                )
+                                add_job_log(job_id, f'📺 Triggering Plex scan for "{lib_name}"...', 'info')
+                                
+                                plex.scan_library(lib.key)
+                                
+                                add_job_log(job_id, f'📺 Plex scan started for {lib_name}', 'success')
+                                db.update_job_phase(job_id, phase="scanning", plex_scan_status="completed")
+                            else:
+                                add_job_log(job_id, f'⚠️ Plex library "{lib_name}" not found', 'warning')
+                                db.update_job_phase(job_id, phase="completed", plex_scan_status="failed")
+                    except Exception as e:
+                        add_job_log(job_id, f'⚠️ Plex scan failed: {str(e)}', 'warning')
+                        db.update_job_phase(job_id, phase="completed", plex_scan_status="failed")
+            else:
+                add_job_log(job_id, f'⚠️ NAS transfer failed, files in {temp_output}', 'warning')
+        
+        db.update_job_status(job_id, JobStatus.COMPLETED)
+        db.update_job_phase(job_id, phase="completed")
+        db.update_job_progress(job_id, 100.0, current_file='✅ Completed')
+        duration = time.time() - start_time
+        add_job_log(job_id, f'🎉 Job completed in {duration:.1f}s', 'success')
             
     except Exception as e:
         add_job_log(job_id, f"❌ Error: {str(e)}", "error")
         db.update_job_status(job_id, JobStatus.FAILED, error_message=str(e))
+        db.update_job_phase(job_id, phase="failed")
+        logger.error(f"AllDebrid error: {e}", exc_info=True)
+
+
+def transfer_to_nas_standalone(source_dir: str, nas_name: str, category: str, log_func, job_info: dict, filter_language: str) -> bool:
+    """Transfer files to NAS using smbclient with smart category detection."""
+    import subprocess
+    import time
+    
+    nas_name_lower = nas_name.lower()
+    
+    # Get NAS config
+    if nas_name in NAS_CONFIGS:
+        config = NAS_CONFIGS[nas_name]
+    elif 'lharmony' in nas_name_lower:
+        config = NAS_CONFIGS.get('Lharmony')
+    elif 'streamwave' in nas_name_lower:
+        config = NAS_CONFIGS.get('Streamwave')
+    else:
+        log_func(f'❌ Unknown NAS: {nas_name}', 'error')
+        return False
+    
+    if not config:
+        log_func(f'❌ NAS {nas_name} not configured', 'error')
+        return False
+    
+    host = config['host']
+    username = config['username']
+    password = config.get('password', '')
+    share = config['share']
+    media_path = config.get('media_path', 'media').strip('/')
+    
+    # Category mapping based on NAS type
+    if 'lharmony' in nas_name_lower:
+        category_map = {
+            'malayalam movies': 'malayalam movies', 'movies': 'movies',
+            'bollywood movies': 'bollywood movies', 'tv-shows': 'tv', 'tv': 'tv',
+            'malayalam-tv-shows': 'malayalam tv shows', 'malayalam tv shows': 'malayalam tv shows',
+        }
+    else:  # Streamwave
+        category_map = {
+            'malayalam movies': 'Malayalam Movies', 'movies': 'movies',
+            'bollywood movies': 'Bollywood Movies', 'tv-shows': 'tv-shows', 'tv': 'tv-shows',
+            'malayalam-tv-shows': 'malayalam-tv-shows', 'malayalam tv shows': 'malayalam-tv-shows',
+        }
+    
+    # Find media files
+    source_path = Path(source_dir)
+    media_files = []
+    for ext in ['*.mkv', '*.mp4', '*.avi', '*.mov']:
+        media_files.extend(source_path.rglob(ext))
+    
+    if not media_files:
+        log_func('⚠️ No media files found', 'warning')
+        return False
+    
+    log_func(f'📦 Found {len(media_files)} file(s) to transfer', 'info')
+    
+    success_count = 0
+    for media_file in media_files:
+        file_name = media_file.name
+        
+        # Smart detect category - pass metadata_found flag
+        metadata_found = job_info.get('metadata_found', True)  # Default to True to avoid false Malayalam detection
+        detected = detect_content_type_standalone(file_name, category, log_func, filter_language, metadata_found)
+        job_info['detected_category'] = detected
+        
+        folder_name = category_map.get(detected.lower(), detected)
+        remote_path = f"{media_path}/{folder_name}"
+        
+        is_tv = 'tv' in detected.lower()
+        
+        if is_tv:
+            import re
+            season_match = re.search(r'[Ss](\d{1,2})[Ee]\d{1,2}', file_name)
+            if season_match:
+                season_num = int(season_match.group(1))
+                series_name = re.split(r'\s*-?\s*[Ss]\d{1,2}[Ee]\d{1,2}', file_name)[0].strip().rstrip(' -')
+                target_folder = f"{series_name}/Season {season_num:02d}"
+            else:
+                target_folder = media_file.stem
+        else:
+            target_folder = media_file.stem
+        
+        log_func(f'📤 Uploading to {folder_name}/{target_folder}: {file_name}...', 'info')
+        
+        # Check for .nfo files (for Plex IMDB matching - movies only)
+        nfo_file = media_file.with_suffix('.nfo')
+        nfo_imdb_file = media_file.parent / (media_file.stem + '-imdb.nfo')
+        has_nfo = nfo_file.exists()
+        has_nfo_imdb = nfo_imdb_file.exists()
+        
+        # Build smbclient command - upload media file and .nfo files if exist
+        if is_tv and '/' in target_folder:
+            series_folder = target_folder.split('/')[0]
+            smb_cmd = f'mkdir "{remote_path}/{series_folder}"; mkdir "{remote_path}/{target_folder}"; cd "{remote_path}/{target_folder}"; put "{media_file}" "{file_name}"'
+        else:
+            smb_cmd = f'mkdir "{remote_path}/{target_folder}"; cd "{remote_path}/{target_folder}"; put "{media_file}" "{file_name}"'
+            # Add .nfo files for movies
+            if has_nfo:
+                smb_cmd += f'; put "{nfo_file}" "{nfo_file.name}"'
+            if has_nfo_imdb:
+                smb_cmd += f'; put "{nfo_imdb_file}" "{nfo_imdb_file.name}"'
+        
+        cmd = ['smbclient', f'//{host}/{share}', '-U', f'{username}%{password}', '-c', smb_cmd]
+        
+        try:
+            start = time.time()
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+            elapsed = time.time() - start
+            size_mb = media_file.stat().st_size / (1024 * 1024)
+            speed = size_mb / elapsed if elapsed > 0 else 0
+            
+            if result.returncode == 0 or 'NT_STATUS_OBJECT_NAME_COLLISION' in result.stderr:
+                nfo_msg = ""
+                if has_nfo or has_nfo_imdb:
+                    nfo_count = sum([has_nfo, has_nfo_imdb])
+                    nfo_msg = f" + {nfo_count} .nfo"
+                log_func(f'✅ Uploaded in {elapsed:.1f}s ({speed:.1f} MB/s): {file_name}{nfo_msg}', 'success')
+                success_count += 1
+            else:
+                log_func(f'⚠️ Upload issue: {result.stderr[:100]}', 'warning')
+        except subprocess.TimeoutExpired:
+            log_func(f'⏱️ Upload timeout: {file_name}', 'error')
+        except Exception as e:
+            log_func(f'❌ Upload error: {str(e)}', 'error')
+    
+    return success_count > 0
+
+
+def detect_content_type_standalone(filename: str, default_category: str, log_func, filter_language: str, metadata_found: bool = True) -> str:
+    """Smart detect Movie vs TV Show and language from filename.
+    
+    Args:
+        filename: The media filename
+        default_category: User-selected category
+        log_func: Logging function
+        filter_language: Audio filter language
+        metadata_found: Whether IMDB/TMDB metadata was found for this file
+    """
+    import re
+    
+    filename_lower = filename.lower()
+    
+    # TV patterns
+    tv_patterns = [r's\d{1,2}e\d{1,2}', r'season\s*\d+', r'episode\s*\d+', r'\d{1,2}x\d{1,2}', r'e\d{2,3}', r'ep\d{1,3}']
+    is_tv = any(re.search(p, filename_lower) for p in tv_patterns)
+    
+    # Language detection from filename
+    malayalam_kw = ['malayalam', ' mal ', '-mal-', '.mal.', 'mlm', '[mal]', '(mal)']
+    hindi_kw = ['hindi', 'bollywood', ' hin ', '-hin-', '.hin.', '[hin]', '(hin)']
+    
+    is_malayalam = any(kw in filename_lower for kw in malayalam_kw)
+    is_hindi = any(kw in filename_lower for kw in hindi_kw)
+    
+    # Only use filter language as fallback if:
+    # 1. No language detected in filename AND
+    # 2. No metadata was found (new movies without IMDB/TMDB data)
+    if not is_malayalam and not is_hindi and not metadata_found:
+        if filter_language and filter_language.lower() == 'malayalam':
+            is_malayalam = True
+            log_func(f'🎯 No metadata found, using filter language: Malayalam', 'info')
+        elif filter_language and filter_language.lower() == 'hindi':
+            is_hindi = True
+            log_func(f'🎯 No metadata found, using filter language: Hindi', 'info')
+    
+    # Determine category
+    if is_tv:
+        if is_malayalam:
+            detected = 'malayalam-tv-shows'
+        elif is_hindi:
+            detected = 'tv-shows'
+        else:
+            detected = 'tv-shows'
+    else:
+        if is_malayalam:
+            detected = 'malayalam movies'
+        elif is_hindi:
+            detected = 'bollywood movies'
+        else:
+            detected = 'movies'
+    
+    if detected.lower() != default_category.lower().replace('-', ' ').replace('_', ' '):
+        log_func(f'🔍 Auto-detected: {default_category} → {detected}', 'info')
+    
+    return detected
 
 
 @app.post("/api/v1/alldebrid")
@@ -507,10 +884,26 @@ async def download_from_alldebrid(request: AllDebridRequest):
     db.update_job_status(job.id, JobStatus.IN_PROGRESS)
     add_job_log(job.id, f"Job #{job.id} created for AllDebrid download", "info")
     
-    # Start background thread
+    # Convert nas_destination to dict if present
+    nas_dest_dict = None
+    if request.nas_destination:
+        nas_dest_dict = {
+            'nas_name': request.nas_destination.nas_name,
+            'category': request.nas_destination.category
+        }
+    
+    # Start background thread with all parameters
     thread = threading.Thread(
         target=run_alldebrid_download,
-        args=(job.id, request.links, request.output_path or DEFAULT_MEDIA_PATH, request.language, request.download_only),
+        args=(
+            job.id, 
+            request.links, 
+            request.output_path or DEFAULT_MEDIA_PATH, 
+            request.language, 
+            request.download_only,
+            nas_dest_dict,
+            request.auto_detect_language
+        ),
         daemon=True
     )
     thread.start()
@@ -529,6 +922,47 @@ async def get_alldebrid_status():
         "configured": bool(ALLDEBRID_API_KEY),
         "api_key_set": bool(ALLDEBRID_API_KEY)
     }
+
+
+@app.get("/api/v1/alldebrid/jobs/{job_id}")
+async def get_alldebrid_job(job_id: int):
+    """Get AllDebrid job status with enhanced progress tracking."""
+    db = get_db()
+    try:
+        job = db.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        # Get logs
+        logs = get_job_logs(job_id)
+        
+        return {
+            "id": job.id,
+            "status": job.status.value if hasattr(job.status, 'value') else job.status,
+            "progress": job.progress or 0,
+            "current_file": job.current_file,
+            "logs": logs,
+            "error": job.error_message,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "processed_files": job.processed_files,
+            "total_files": job.total_files,
+            # Enhanced progress tracking fields
+            "phase": getattr(job, 'phase', 'pending'),
+            "renamed_files": getattr(job, 'renamed_files', 0),
+            "filtered_files": getattr(job, 'filtered_files', 0),
+            "nas_destination": getattr(job, 'nas_destination', None),
+            "detected_category": getattr(job, 'detected_category', None),
+            "metadata_found": getattr(job, 'metadata_found', 'unknown'),
+            "plex_scan_status": getattr(job, 'plex_scan_status', None),
+            "plex_library_name": getattr(job, 'plex_library_name', None),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/v1/convert", response_model=VideoConversionResponse)
@@ -957,7 +1391,7 @@ async def cleanup_stale_jobs():
 class MusicProcessRequest(BaseModel):
     """Request model for music processing"""
     source_path: str
-    output_path: str = "/Users/sharvin/Documents/Music"
+    output_path: Optional[str] = None
     preset: str = "optimal"  # optimal, clarity, bass_boost, warm, bright, flat
     output_format: str = "keep"  # keep, flac, mp3, m4a
     enhance_audio: bool = True
@@ -977,7 +1411,7 @@ class MusicProcessResponse(BaseModel):
 # MusicBrainz credentials from environment
 MUSICBRAINZ_CLIENT_ID = os.getenv("MUSICBRAINZ_CLIENT_ID", "")
 MUSICBRAINZ_CLIENT_SECRET = os.getenv("MUSICBRAINZ_CLIENT_SECRET", "")
-MUSIC_OUTPUT_PATH = os.getenv("MUSIC_OUTPUT_PATH", "/Users/sharvin/Documents/Music")
+MUSIC_OUTPUT_PATH = os.getenv("MUSIC_OUTPUT_PATH", str(Path.home() / "Documents" / "Music"))
 
 # Discogs API token
 DISCOGS_API_TOKEN = os.getenv("DISCOGS_API_TOKEN", "")
@@ -2135,33 +2569,46 @@ async def update_music_tools():
 NAS_CONFIGS = {}
 
 def init_nas_configs():
-    """Initialize NAS configurations from environment variables."""
+    """Initialize NAS configurations from environment variables or settings."""
     global NAS_CONFIGS
     
+    # Helper to get config value from env or settings
+    def get_config(env_key, settings_attr, default=""):
+        val = os.getenv(env_key)
+        if not val and USE_CONFIG and settings:
+            val = getattr(settings, settings_attr, None)
+        return val or default
+    
     # Lharmony (Synology) - folder names: tv, malayalam tv shows
-    if os.getenv("LHARMONY_HOST"):
+    lharmony_host = get_config("LHARMONY_HOST", "lharmony_host")
+    if lharmony_host:
+        lharmony_share = get_config("LHARMONY_SHARE", "lharmony_share", "data")
         NAS_CONFIGS["Lharmony"] = {
             "name": "Lharmony",
-            "host": os.getenv("LHARMONY_HOST"),
-            "username": os.getenv("LHARMONY_USERNAME", ""),
-            "share": os.getenv("LHARMONY_SHARE", "data"),
-            "media_path": os.getenv("LHARMONY_MEDIA_PATH", "/media"),
-            "mount_point": f"/Volumes/{os.getenv('LHARMONY_SHARE', 'data')}",
+            "host": lharmony_host,
+            "username": get_config("LHARMONY_USERNAME", "lharmony_username"),
+            "password": get_config("LHARMONY_PASSWORD", "lharmony_password"),
+            "share": lharmony_share,
+            "media_path": get_config("LHARMONY_MEDIA_PATH", "lharmony_media_path", "/media"),
+            "mount_point": f"/mnt/{lharmony_share}",
             "type": "synology",
             "categories": ["movies", "malayalam movies", "bollywood movies", "tv", "malayalam tv shows", "music"]
         }
     
     # Streamwave (Unraid) - folder names: tv-shows, malayalam-tv-shows
-    if os.getenv("STREAMWAVE_HOST"):
+    streamwave_host = get_config("STREAMWAVE_HOST", "streamwave_host")
+    if streamwave_host:
+        streamwave_share = get_config("STREAMWAVE_SHARE", "streamwave_share", "Data-Streamwave")
         NAS_CONFIGS["Streamwave"] = {
             "name": "Streamwave",
-            "host": os.getenv("STREAMWAVE_HOST"),
-            "username": os.getenv("STREAMWAVE_USERNAME", ""),
-            "share": os.getenv("STREAMWAVE_SHARE", "Data-Streamwave"),
-            "media_path": os.getenv("STREAMWAVE_MEDIA_PATH", "/media"),
-            "mount_point": f"/Volumes/{os.getenv('STREAMWAVE_SHARE', 'Data-Streamwave')}",
+            "host": streamwave_host,
+            "username": get_config("STREAMWAVE_USERNAME", "streamwave_username"),
+            "password": get_config("STREAMWAVE_PASSWORD", "streamwave_password"),
+            "share": streamwave_share,
+            "media_path": get_config("STREAMWAVE_MEDIA_PATH", "streamwave_media_path", "/media"),
+            "mount_point": f"/mnt/{streamwave_share}",
             "type": "unraid",
-            "categories": ["movies", "malayalam movies", "bollywood movies", "tv-shows", "malayalam-tv-shows"]
+            "categories": ["movies", "Malayalam Movies", "Bollywood Movies", "tv-shows", "malayalam-tv-shows"]
         }
 
 # Initialize on module load
@@ -2182,17 +2629,30 @@ class NASTestRequest(BaseModel):
 @app.get("/api/v1/nas/list")
 async def list_nas():
     """List all configured NAS locations."""
+    import subprocess
+    
     nas_list = []
     
     for name, config in NAS_CONFIGS.items():
-        mount_point = Path(config["mount_point"])
-        is_mounted = mount_point.exists() and mount_point.is_mount()
+        # Check if NAS is reachable via ping
+        is_connected = False
+        try:
+            result = subprocess.run(
+                ["ping", "-c", "1", "-W", "2", config["host"]],
+                capture_output=True,
+                timeout=5
+            )
+            is_connected = result.returncode == 0
+        except Exception:
+            pass
         
         nas_list.append({
             "name": config["name"],
             "host": config["host"],
             "type": config["type"],
-            "mounted": is_mounted,
+            "mounted": is_connected,  # Use ping result
+            "connected": is_connected,
+            "status": "online" if is_connected else "offline",
             "mount_point": config["mount_point"],
             "categories": config["categories"]
         })
@@ -2207,38 +2667,32 @@ async def list_nas():
 @app.get("/api/v1/nas/{nas_name}/status")
 async def get_nas_status(nas_name: str):
     """Get status of a specific NAS."""
+    import subprocess
+    
     if nas_name not in NAS_CONFIGS:
         raise HTTPException(status_code=404, detail=f"NAS not found: {nas_name}")
     
     config = NAS_CONFIGS[nas_name]
-    mount_point = Path(config["mount_point"])
-    is_mounted = mount_point.exists() and mount_point.is_mount()
     
-    # Get disk space if mounted
-    disk_info = None
-    if is_mounted:
-        try:
-            import shutil
-            total, used, free = shutil.disk_usage(mount_point)
-            disk_info = {
-                "total_gb": round(total / (1024**3), 2),
-                "used_gb": round(used / (1024**3), 2),
-                "free_gb": round(free / (1024**3), 2),
-                "used_percent": round((used / total) * 100, 1)
-            }
-        except Exception:
-            pass
+    # Check if NAS is reachable via ping
+    is_connected = False
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "2", config["host"]],
+            capture_output=True,
+            timeout=5
+        )
+        is_connected = result.returncode == 0
+    except Exception:
+        pass
     
-    # Check categories
+    # Build categories with status
     categories_status = {}
-    if is_mounted:
-        media_base = mount_point / config["media_path"].lstrip('/')
-        for cat in config["categories"]:
-            cat_path = media_base / cat
-            categories_status[cat] = {
-                "path": str(cat_path),
-                "exists": cat_path.exists()
-            }
+    for cat in config["categories"]:
+        categories_status[cat] = {
+            "path": f"{config['mount_point']}/{config['media_path'].lstrip('/')}/{cat}",
+            "exists": is_connected  # Assume exists if connected
+        }
     
     return {
         "success": True,
@@ -2246,10 +2700,13 @@ async def get_nas_status(nas_name: str):
             "name": config["name"],
             "host": config["host"],
             "type": config["type"],
-            "mounted": is_mounted,
+            "mounted": is_connected,
+            "connected": is_connected,
+            "status": "online" if is_connected else "offline",
             "mount_point": config["mount_point"],
-            "disk": disk_info,
-            "categories": categories_status
+            "disk": None,
+            "categories": categories_status,
+            "categories_list": config["categories"]
         }
     }
 
@@ -2416,6 +2873,392 @@ async def browse_nas_category(nas_name: str, category: str, limit: int = Query(5
         "files": files,
         "count": len(files)
     }
+
+
+# ========== Plex Integration ==========
+
+def get_plex_client():
+    """Get Plex client instance if configured."""
+    plex_url = os.environ.get('PLEX_SERVER_URL') or (settings.plex_server_url if USE_CONFIG and settings else None)
+    plex_token = os.environ.get('PLEX_TOKEN') or (settings.plex_token if USE_CONFIG and settings else None)
+    plex_enabled = os.environ.get('PLEX_ENABLED', '').lower() in ('true', '1', 'yes')
+    
+    if not plex_enabled and USE_CONFIG and settings:
+        plex_enabled = getattr(settings, 'plex_enabled', False)
+    
+    if not plex_enabled or not plex_url or not plex_token:
+        return None
+    
+    try:
+        from core.plex_client import PlexClient
+        return PlexClient(plex_url, plex_token)
+    except ImportError as e:
+        logger.warning(f"Plex client not available: {e}")
+        return None
+
+
+def get_tautulli_client():
+    """Get Tautulli client instance if configured."""
+    tautulli_url = os.environ.get('TAUTULLI_URL') or (settings.tautulli_url if USE_CONFIG and settings else None)
+    tautulli_key = os.environ.get('TAUTULLI_API_KEY') or (settings.tautulli_api_key if USE_CONFIG and settings else None)
+    tautulli_enabled = os.environ.get('TAUTULLI_ENABLED', '').lower() in ('true', '1', 'yes')
+    
+    if not tautulli_enabled and USE_CONFIG and settings:
+        tautulli_enabled = getattr(settings, 'tautulli_enabled', False)
+    
+    if not tautulli_enabled or not tautulli_url or not tautulli_key:
+        return None
+    
+    try:
+        from core.tautulli_client import TautulliClient
+        return TautulliClient(tautulli_url, tautulli_key)
+    except ImportError as e:
+        logger.warning(f"Tautulli client not available: {e}")
+        return None
+
+
+@app.get("/api/v1/plex/status")
+async def get_plex_status():
+    """Get Plex server status and connection info."""
+    plex_url = os.environ.get('PLEX_SERVER_URL') or (settings.plex_server_url if USE_CONFIG and settings else None)
+    plex_token = os.environ.get('PLEX_TOKEN') or (settings.plex_token if USE_CONFIG and settings else None)
+    plex_enabled = os.environ.get('PLEX_ENABLED', '').lower() in ('true', '1', 'yes')
+    if not plex_enabled and USE_CONFIG and settings:
+        plex_enabled = getattr(settings, 'plex_enabled', False)
+    
+    plex = get_plex_client()
+    if not plex:
+        return {
+            "success": False,
+            "enabled": plex_enabled,
+            "configured": bool(plex_url and plex_token),
+            "message": "Plex not configured"
+        }
+    
+    try:
+        identity = plex.get_server_identity()
+        sessions = plex.get_active_sessions()
+        
+        return {
+            "success": True,
+            "enabled": True,
+            "configured": True,
+            "server": {
+                "name": identity.get('friendly_name'),
+                "version": identity.get('version'),
+                "platform": identity.get('platform'),
+                "machine_id": identity.get('machine_identifier'),
+                "plex_pass": identity.get('my_plex_subscription', False),
+            },
+            "active_sessions": len(sessions),
+            "sessions": [
+                {
+                    "user": s.user,
+                    "title": s.title,
+                    "type": s.type,
+                    "player": s.player,
+                    "platform": s.platform,
+                    "state": s.state,
+                    "progress": s.progress,
+                }
+                for s in sessions
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Plex status error: {e}")
+        return {
+            "success": False,
+            "enabled": True,
+            "configured": True,
+            "error": str(e)
+        }
+
+
+@app.get("/api/v1/plex/libraries")
+async def get_plex_libraries():
+    """Get all Plex libraries."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    try:
+        libraries = plex.get_libraries()
+        return {
+            "success": True,
+            "libraries": [
+                {
+                    "key": lib.key,
+                    "title": lib.title,
+                    "type": lib.type,
+                    "agent": lib.agent,
+                    "locations": lib.locations,
+                    "updated_at": lib.updated_at,
+                    "scanned_at": lib.scanned_at,
+                }
+                for lib in libraries
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Failed to get libraries: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/plex/scan/{library_key}")
+async def scan_plex_library(library_key: str, path: str = None):
+    """Trigger a Plex library scan."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    try:
+        success = plex.scan_library(library_key, path)
+        return {"success": success, "message": f"Scan triggered for library {library_key}"}
+    except Exception as e:
+        logger.error(f"Scan failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/plex/recently-added")
+async def get_plex_recently_added(library_key: str = None, limit: int = 20):
+    """Get recently added items from Plex."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    try:
+        items = plex.get_recently_added(library_key, limit)
+        return {
+            "success": True,
+            "items": [
+                {
+                    "rating_key": item.rating_key,
+                    "title": item.title,
+                    "type": item.type,
+                    "year": item.year,
+                    "imdb_id": item.imdb_id,
+                    "tmdb_id": item.tmdb_id,
+                    "added_at": item.added_at,
+                    "library": item.library_section_title,
+                }
+                for item in items
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Failed to get recently added: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Plex Poster/Art Upload ==========
+
+class PosterUploadRequest(BaseModel):
+    """Request model for poster upload"""
+    rating_key: str
+    poster_url: Optional[str] = None
+
+
+class ArtUploadRequest(BaseModel):
+    """Request model for background art upload"""
+    rating_key: str
+    art_url: Optional[str] = None
+
+
+@app.post("/api/v1/plex/poster/url")
+async def upload_poster_from_url(request: PosterUploadRequest):
+    """Upload a custom poster from URL for a Plex item."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    if not request.poster_url:
+        raise HTTPException(status_code=400, detail="poster_url is required")
+    
+    try:
+        success = plex.upload_poster_from_url(request.rating_key, request.poster_url)
+        if success:
+            return {
+                "success": True,
+                "message": f"Poster uploaded successfully for item {request.rating_key}"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to upload poster")
+    except Exception as e:
+        logger.error(f"Poster upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/plex/poster/upload/{rating_key}")
+async def upload_poster_file(rating_key: str, file: UploadFile = File(...)):
+    """Upload a custom poster file for a Plex item."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    try:
+        # Read file content
+        content = await file.read()
+        
+        success = plex.upload_poster(rating_key, content)
+        if success:
+            return {
+                "success": True,
+                "message": f"Poster uploaded successfully for item {rating_key}"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to upload poster")
+    except Exception as e:
+        logger.error(f"Poster upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/plex/art/url")
+async def upload_art_from_url(request: ArtUploadRequest):
+    """Upload custom background art from URL for a Plex item."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    if not request.art_url:
+        raise HTTPException(status_code=400, detail="art_url is required")
+    
+    try:
+        success = plex.upload_art_from_url(request.rating_key, request.art_url)
+        if success:
+            return {
+                "success": True,
+                "message": f"Background art uploaded successfully for item {request.rating_key}"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to upload art")
+    except Exception as e:
+        logger.error(f"Art upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/plex/art/upload/{rating_key}")
+async def upload_art_file(rating_key: str, file: UploadFile = File(...)):
+    """Upload custom background art file for a Plex item."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    try:
+        content = await file.read()
+        
+        success = plex.upload_art(rating_key, content)
+        if success:
+            return {
+                "success": True,
+                "message": f"Background art uploaded successfully for item {rating_key}"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to upload art")
+    except Exception as e:
+        logger.error(f"Art upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/plex/posters/{rating_key}")
+async def get_plex_posters(rating_key: str):
+    """Get available posters for a Plex item."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    try:
+        posters = plex.get_posters(rating_key)
+        return {
+            "success": True,
+            "posters": posters
+        }
+    except Exception as e:
+        logger.error(f"Failed to get posters: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/plex/scan/by-name/{library_name}")
+async def scan_plex_library_by_name(library_name: str):
+    """Trigger a Plex library scan by library name."""
+    plex = get_plex_client()
+    if not plex:
+        raise HTTPException(status_code=503, detail="Plex not configured")
+    
+    try:
+        success = plex.scan_library_by_name(library_name)
+        if success:
+            return {"success": True, "message": f"Scan triggered for library '{library_name}'"}
+        else:
+            raise HTTPException(status_code=404, detail=f"Library '{library_name}' not found")
+    except Exception as e:
+        logger.error(f"Scan failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Tautulli Integration ==========
+
+@app.get("/api/v1/tautulli/status")
+async def get_tautulli_status():
+    """Get Tautulli/Plex server status."""
+    tautulli_url = os.environ.get('TAUTULLI_URL') or (settings.tautulli_url if USE_CONFIG and settings else None)
+    tautulli_key = os.environ.get('TAUTULLI_API_KEY') or (settings.tautulli_api_key if USE_CONFIG and settings else None)
+    tautulli_enabled = os.environ.get('TAUTULLI_ENABLED', '').lower() in ('true', '1', 'yes')
+    if not tautulli_enabled and USE_CONFIG and settings:
+        tautulli_enabled = getattr(settings, 'tautulli_enabled', False)
+    
+    tautulli = get_tautulli_client()
+    if not tautulli:
+        return {
+            "success": False,
+            "enabled": tautulli_enabled,
+            "configured": bool(tautulli_url and tautulli_key),
+            "message": "Tautulli not configured"
+        }
+    
+    try:
+        activity = tautulli.get_activity()
+        return {
+            "success": True,
+            "enabled": True,
+            "configured": True,
+            "activity": activity
+        }
+    except Exception as e:
+        logger.error(f"Tautulli status error: {e}")
+        return {
+            "success": False,
+            "enabled": True,
+            "configured": True,
+            "error": str(e)
+        }
+
+
+@app.get("/api/v1/tautulli/libraries")
+async def get_tautulli_libraries():
+    """Get library statistics from Tautulli."""
+    tautulli = get_tautulli_client()
+    if not tautulli:
+        raise HTTPException(status_code=503, detail="Tautulli not configured")
+    
+    try:
+        libraries = tautulli.get_libraries()
+        return {"success": True, "libraries": libraries}
+    except Exception as e:
+        logger.error(f"Failed to get Tautulli libraries: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/tautulli/stats/users")
+async def get_tautulli_user_stats(days: int = 30):
+    """Get user statistics from Tautulli."""
+    tautulli = get_tautulli_client()
+    if not tautulli:
+        raise HTTPException(status_code=503, detail="Tautulli not configured")
+    
+    try:
+        users = tautulli.get_user_stats(days=days)
+        return {"success": True, "users": users}
+    except Exception as e:
+        logger.error(f"Failed to get user stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Global tool updater instance for auto-updates

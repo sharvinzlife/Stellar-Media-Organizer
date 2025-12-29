@@ -67,6 +67,8 @@ class RenameResult:
     error: Optional[str] = None
     tmdb_title: Optional[str] = None
     tmdb_id: Optional[int] = None
+    imdb_id: Optional[str] = None  # IMDB ID for .nfo file creation
+    metadata_found: bool = True  # Whether IMDB/TMDB metadata was found
 
 
 class FilenameParser:
@@ -116,14 +118,58 @@ class FilenameParser:
     RELEASE_GROUP_PATTERN = re.compile(r'-([A-Za-z0-9]+)(?:\.[a-z]{2,4})?$')
     
     # Site prefixes to strip
+    # Using [^\s\(\)\[\]\{\},.]* to exclude common delimiters but still catch all variations
+    # The pattern requires at least one dot (domain.tld) to avoid false positives
     SITE_PREFIXES = [
-        r'^(?:www\.)?(?:\d+)?movierulz[a-z]*\.[a-z.]+\s*-\s*',
-        r'^(?:www\.)?(?:\d+)?tamilmv[a-z]*\.[a-z.]+\s*-\s*',
-        r'^(?:www\.)?tamilrockers[a-z]*\.[a-z.]+\s*-\s*',
-        r'^sanet\.st\.',
-        r'^YTS\.[A-Z]+\.',
-        r'^RARBG\.to\.',
-        r'^1337x\.[a-z]+\s*-\s*',
+        # TamilMV - catches ANY prefix/subdomain before "tamilmv" and ANY TLD after
+        # Examples: www.1TamilMV.kiwi, www.xyz123TamilMV.buzz, 1tamilmv.ws, tamilmvhd.com, etc.
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*tamilmv[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # MovieRulz - same flexible pattern
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*movierulz[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # TamilRockers - same flexible pattern
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*tamilrockers[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # TamilBlasters - same flexible pattern
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*tamilblasters[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # TamilYogi
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*tamilyogi[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # Isaimini
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*isaimini[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # Moviesda
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*moviesda[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # Kuttymovies
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*kuttymovies[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # HDHub4u
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*hdhub4u[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # Filmyzilla
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*filmyzilla[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # Bracketed site tags like [TamilMV], [1TamilMV], etc.
+        r'^\[(?:www\.)?[^\]]*tamilmv[^\]]*\]\s*',
+        r'^\[(?:www\.)?[^\]]*movierulz[^\]]*\]\s*',
+        r'^\[(?:www\.)?[^\]]*tamilrockers[^\]]*\]\s*',
+        r'^\[(?:www\.)?[^\]]*tamilblasters[^\]]*\]\s*',
+        
+        # Other common sites
+        r'^sanet\.st\s*[.\-]\s*',
+        r'^YTS\.[A-Z]+\s*[.\-]\s*',
+        r'^RARBG\.[a-z]+\s*[.\-]\s*',
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*1337x[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*torrentgalaxy[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        r'^(?:www\.)?[^\s\(\)\[\]\{\},]*eztv[^\s\(\)\[\]\{\},]*\.[a-z]{2,10}\s*-\s*',
+        
+        # Generic pattern: www.anything.tld - (catches any site prefix with dash separator)
+        # Handles domains with hyphens like www.random-site.org -
+        r'^(?:www\.)?[\w\d][\w\d-]*\.[a-z]{2,10}\s+-\s+',
+        r'^(?:www\.)?[\w\d][\w\d-]*\.[a-z]{2,10}\s*-\s*',
     ]
     
     def __init__(self):
@@ -230,10 +276,10 @@ class FilenameParser:
 
 class SmartRenamer:
     """
-    Smart media file renamer with TMDB integration.
+    Smart media file renamer with IMDB (OMDB) as primary and TMDB as fallback.
     
     Usage:
-        renamer = SmartRenamer(tmdb_token="your_token")
+        renamer = SmartRenamer(tmdb_token="your_token", omdb_api_key="your_key")
         
         # Preview renames
         results = renamer.preview_rename("/path/to/files")
@@ -252,6 +298,7 @@ class SmartRenamer:
         tmdb_client: Optional[TMDBClient] = None,
         tmdb_token: Optional[str] = None,
         tmdb_api_key: Optional[str] = None,
+        omdb_api_key: Optional[str] = None,
         organize_folders: bool = True,
         include_episode_title: bool = True
     ):
@@ -262,15 +309,28 @@ class SmartRenamer:
             tmdb_client: Existing TMDB client instance
             tmdb_token: TMDB access token (creates new client)
             tmdb_api_key: TMDB API key (creates new client)
+            omdb_api_key: OMDB API key for IMDB lookups (primary source)
             organize_folders: Create series/season folder structure
             include_episode_title: Include episode titles in filenames
         """
+        # TMDB client (fallback)
         if tmdb_client:
             self.tmdb = tmdb_client
         elif tmdb_token or tmdb_api_key:
             self.tmdb = TMDBClient(access_token=tmdb_token, api_key=tmdb_api_key)
         else:
             self.tmdb = get_tmdb_client()
+        
+        # OMDB client (primary for IMDB data)
+        self.omdb = None
+        omdb_key = omdb_api_key or os.getenv("OMDB_API_KEY")
+        if omdb_key:
+            try:
+                from .omdb_client import OMDbClient
+                self.omdb = OMDbClient(api_key=omdb_key)
+                logger.info("OMDB (IMDB) client initialized - using as primary source")
+            except ImportError:
+                logger.warning("OMDB client not available, using TMDB only")
         
         self.parser = FilenameParser()
         self.generator = TMDBFilenameGenerator(self.tmdb)
@@ -279,6 +339,28 @@ class SmartRenamer:
         
         # Cache for series lookups
         self._series_cache: Dict[str, Tuple[TMDBSeriesInfo, Dict[int, Dict[int, TMDBEpisodeInfo]]]] = {}
+        self._omdb_cache: Dict[str, any] = {}
+    
+    def _lookup_omdb(self, title: str, year: Optional[int] = None, media_type: str = "movie"):
+        """Lookup title in OMDB (IMDB) first."""
+        if not self.omdb:
+            return None
+        
+        cache_key = f"{media_type}:{title}:{year}"
+        if cache_key in self._omdb_cache:
+            return self._omdb_cache[cache_key]
+        
+        try:
+            if media_type == "series":
+                result = self.omdb.search_series(title)
+            else:
+                result = self.omdb.search_movie(title, year)
+            
+            self._omdb_cache[cache_key] = result
+            return result
+        except Exception as e:
+            logger.debug(f"OMDB lookup failed for {title}: {e}")
+            return None
     
     def _get_series_info(
         self,
@@ -302,61 +384,240 @@ class SmartRenamer:
         
         return series, episodes
     
+    def generate_clean_fallback_name(
+        self,
+        parsed: ParsedFilename,
+        extension: str
+    ) -> str:
+        """
+        Generate a clean filename when metadata lookup fails.
+        Strips site prefixes, cleans up title, keeps year if available.
+        
+        Args:
+            parsed: Parsed filename info
+            extension: File extension
+            
+        Returns:
+            Clean filename (without metadata lookup)
+        """
+        title = parsed.title
+        
+        # Clean up the title further
+        # Remove common technical terms that might remain
+        tech_terms = [
+            r'\b(WEB-?DL|WEBRip|BluRay|BDRip|HDRip|DVDRip|HDTV)\b',
+            r'\b(x264|x265|HEVC|H\.?264|H\.?265|AV1|VP9)\b',
+            r'\b(AAC|AC3|DTS|FLAC|MP3|EAC3|TrueHD|Atmos)\b',
+            r'\b(2160p|1080p|720p|480p|4K|UHD)\b',
+            r'\b(AMZN|NF|DSNP|HMAX|ATVP|PCOK|PMTP)\b',
+            r'\b(PROPER|REPACK|INTERNAL|EXTENDED|UNRATED)\b',
+            r'\b(ESub|ESubs|Eng|Hindi|Tamil|Telugu|Malayalam)\b',
+            r'\b(Multi|Dual|Audio)\b',
+            r'\[.*?\]',  # Remove bracketed content
+            r'\((?!(?:19|20)\d{2}\))[^)]*\)',  # Remove parentheses except year
+        ]
+        
+        for pattern in tech_terms:
+            title = re.sub(pattern, '', title, flags=re.IGNORECASE)
+        
+        # Clean up multiple spaces and trim
+        title = re.sub(r'\s+', ' ', title).strip()
+        title = re.sub(r'[._-]+$', '', title).strip()  # Remove trailing separators
+        
+        # Title case
+        title = title.title()
+        
+        if parsed.media_type == MediaType.SERIES:
+            # For series: Title (Year) - S01E01.ext or Title - S01E01.ext
+            ep_code = f"S{parsed.season:02d}E{parsed.episode:02d}"
+            if parsed.year:
+                new_name = f"{title} ({parsed.year}) - {ep_code}{extension}"
+            else:
+                new_name = f"{title} - {ep_code}{extension}"
+        elif parsed.media_type == MediaType.MOVIE:
+            # For movies: Title (Year).ext or just Title.ext
+            if parsed.year:
+                new_name = f"{title} ({parsed.year}){extension}"
+            else:
+                new_name = f"{title}{extension}"
+        else:
+            # Unknown type - just clean the title
+            if parsed.year:
+                new_name = f"{title} ({parsed.year}){extension}"
+            else:
+                new_name = f"{title}{extension}"
+        
+        return self.generator.sanitize(new_name)
+    
     def generate_new_name(
         self,
         parsed: ParsedFilename,
         extension: str
-    ) -> Tuple[Optional[str], Optional[str], Optional[int]]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[int], Optional[str]]:
         """
-        Generate new filename using TMDB data.
+        Generate new filename using IMDB (OMDB) as primary, TMDB as fallback.
+        
+        Follows Plex naming conventions:
+        - Movies: Movie Name (Year) {imdb-tt1234567}.mkv
+        - TV Shows: Show Name (Year) {tvdb-123456} or {tmdb-123456}
         
         Returns:
-            Tuple of (new_filename, tmdb_title, tmdb_id)
+            Tuple of (new_filename, title, tmdb_id, imdb_id)
         """
         if parsed.media_type == MediaType.SERIES:
+            # Try OMDB first for series
+            omdb_series = self._lookup_omdb(parsed.title, media_type="series")
+            
+            if omdb_series:
+                logger.info(f"Found series in IMDB: {omdb_series.title} ({omdb_series.imdb_id})")
+                series_title = omdb_series.title
+                year_str = omdb_series.year.split('–')[0] if omdb_series.year else None
+                imdb_id = omdb_series.imdb_id
+                
+                # Get episode info from TMDB (OMDB episode lookup is limited)
+                series, episodes = self._get_series_info(series_title, parsed.season)
+                tmdb_id = series.tmdb_id if series else None
+                
+                # Build base name with Plex hint - prefer TVDB/TMDB for TV shows
+                # Format: Show Name (Year) {tmdb-123456} or {tvdb-123456}
+                if year_str:
+                    if tmdb_id:
+                        base = f"{series_title} ({year_str}) {{tmdb-{tmdb_id}}}"
+                    else:
+                        base = f"{series_title} ({year_str})"
+                else:
+                    if tmdb_id:
+                        base = f"{series_title} {{tmdb-{tmdb_id}}}"
+                    else:
+                        base = series_title
+                
+                ep_code = f"S{parsed.season:02d}E{parsed.episode:02d}"
+                
+                # Try to get episode title from TMDB
+                if self.include_episode_title and episodes and parsed.episode in episodes:
+                    ep_title = self.generator.sanitize(episodes[parsed.episode].title)
+                    new_name = f"{series_title} - {ep_code} - {ep_title}{extension}"
+                else:
+                    # Try OMDB for episode title
+                    if self.omdb and self.include_episode_title:
+                        try:
+                            ep_info = self.omdb.get_episode(omdb_series.imdb_id, parsed.season, parsed.episode)
+                            if ep_info and ep_info.title:
+                                ep_title = self.generator.sanitize(ep_info.title)
+                                new_name = f"{series_title} - {ep_code} - {ep_title}{extension}"
+                            else:
+                                new_name = f"{series_title} - {ep_code}{extension}"
+                        except:
+                            new_name = f"{series_title} - {ep_code}{extension}"
+                    else:
+                        new_name = f"{series_title} - {ep_code}{extension}"
+                
+                return self.generator.sanitize(new_name), base, tmdb_id, imdb_id
+            
+            # Fallback to TMDB
             series, episodes = self._get_series_info(parsed.title, parsed.season)
             
             if not series:
-                logger.warning(f"Series not found on TMDB: {parsed.title}")
-                return None, None, None
+                logger.warning(f"Series not found in IMDB or TMDB: {parsed.title}")
+                return None, None, None, None
             
-            # Build filename
+            # Build base name with TMDB hint for Plex
+            # Format: Show Name (Year) {tmdb-123456}
             if series.year_range:
-                base = f"{series.title} ({series.year_range})"
+                year_start = series.year_range.split('–')[0] if '–' in series.year_range else series.year_range
+                base = f"{series.title} ({year_start}) {{tmdb-{series.tmdb_id}}}"
             else:
-                base = series.title
+                base = f"{series.title} {{tmdb-{series.tmdb_id}}}"
             
             ep_code = f"S{parsed.season:02d}E{parsed.episode:02d}"
             
             if self.include_episode_title and parsed.episode in episodes:
                 ep_title = self.generator.sanitize(episodes[parsed.episode].title)
-                new_name = f"{base} - {ep_code} - {ep_title}{extension}"
+                new_name = f"{series.title} - {ep_code} - {ep_title}{extension}"
             else:
-                new_name = f"{base} - {ep_code}{extension}"
+                new_name = f"{series.title} - {ep_code}{extension}"
             
-            return self.generator.sanitize(new_name), series.title, series.tmdb_id
+            return self.generator.sanitize(new_name), base, series.tmdb_id, None
         
         elif parsed.media_type == MediaType.MOVIE:
+            # Try OMDB (IMDB) first for movies
+            omdb_movie = self._lookup_omdb(parsed.title, parsed.year, media_type="movie")
+            
+            if omdb_movie:
+                logger.info(f"Found movie in IMDB: {omdb_movie.title} ({omdb_movie.year}) - {omdb_movie.imdb_id}")
+                year = omdb_movie.year
+                imdb_id = omdb_movie.imdb_id
+                
+                # Plex movie naming: Movie Name (Year) {imdb-tt1234567}.mkv
+                if year:
+                    new_name = f"{omdb_movie.title} ({year}) {{imdb-{imdb_id}}}{extension}"
+                else:
+                    new_name = f"{omdb_movie.title} {{imdb-{imdb_id}}}{extension}"
+                
+                return self.generator.sanitize(new_name), omdb_movie.title, None, imdb_id
+            
+            # Fallback to TMDB
             movie = self.tmdb.search_movie_single(parsed.title, parsed.year)
             
             if not movie:
-                logger.warning(f"Movie not found on TMDB: {parsed.title}")
-                return None, None, None
+                logger.warning(f"Movie not found in IMDB or TMDB: {parsed.title}")
+                return None, None, None, None
             
+            # Plex movie naming with TMDB: Movie Name (Year) {tmdb-123456}.mkv
             if movie.year:
-                new_name = f"{movie.title} ({movie.year}){extension}"
+                new_name = f"{movie.title} ({movie.year}) {{tmdb-{movie.tmdb_id}}}{extension}"
             else:
-                new_name = f"{movie.title}{extension}"
+                new_name = f"{movie.title} {{tmdb-{movie.tmdb_id}}}{extension}"
             
-            return self.generator.sanitize(new_name), movie.title, movie.tmdb_id
+            return self.generator.sanitize(new_name), movie.title, movie.tmdb_id, None
         
-        return None, None, None
+        return None, None, None, None
+    
+    def _create_nfo_file(self, media_path: Path, imdb_id: str) -> bool:
+        """
+        Create a .nfo file with IMDB URL for Plex matching (MOVIES ONLY).
+        
+        Creates TWO variations for maximum Plex compatibility:
+        1. Movie Name (Year).nfo - contains IMDB URL
+        2. Movie Name (Year)-imdb.nfo - contains IMDB URL
+        
+        Format: http://www.imdb.com/title/tt1234567/
+        
+        Args:
+            media_path: Path to the media file
+            imdb_id: IMDB ID (e.g., tt1234567)
+            
+        Returns:
+            True if .nfo files were created successfully
+        """
+        try:
+            # Create IMDB URL
+            imdb_url = f"http://www.imdb.com/title/{imdb_id}/"
+            
+            # Variation 1: Movie Name (Year).nfo
+            nfo_name = media_path.stem + ".nfo"
+            nfo_path = media_path.parent / nfo_name
+            nfo_path.write_text(imdb_url, encoding='utf-8')
+            
+            # Variation 2: Movie Name (Year)-imdb.nfo
+            nfo_imdb_name = media_path.stem + "-imdb.nfo"
+            nfo_imdb_path = media_path.parent / nfo_imdb_name
+            nfo_imdb_path.write_text(imdb_url, encoding='utf-8')
+            
+            logger.info(f"Created .nfo files: {nfo_name}, {nfo_imdb_name} -> {imdb_id}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to create .nfo file: {e}")
+            return False
     
     def get_target_path(
         self,
         parsed: ParsedFilename,
         new_name: str,
-        base_dir: Path
+        base_dir: Path,
+        use_fallback: bool = False,
+        folder_name: Optional[str] = None
     ) -> Path:
         """
         Get target path for renamed file.
@@ -365,6 +626,8 @@ class SmartRenamer:
             parsed: Parsed filename info
             new_name: New filename
             base_dir: Base output directory
+            use_fallback: If True, don't try to lookup series info (metadata lookup failed)
+            folder_name: Optional folder name with Plex hints (e.g., "Show Name (2020) {tmdb-123456}")
             
         Returns:
             Full target path
@@ -373,22 +636,35 @@ class SmartRenamer:
             return base_dir / new_name
         
         if parsed.media_type == MediaType.SERIES:
-            series, _ = self._get_series_info(parsed.title, parsed.season)
-            
-            if series:
-                if series.year_range:
-                    series_folder = f"{series.title} ({series.year_range})"
+            if folder_name:
+                # Use provided folder name with Plex hints
+                series_folder = self.generator.sanitize(folder_name)
+            elif not use_fallback:
+                series, _ = self._get_series_info(parsed.title, parsed.season)
+                
+                if series:
+                    # Add TMDB hint for Plex matching
+                    if series.year_range:
+                        year_start = series.year_range.split('–')[0] if '–' in series.year_range else series.year_range
+                        series_folder = f"{series.title} ({year_start}) {{tmdb-{series.tmdb_id}}}"
+                    else:
+                        series_folder = f"{series.title} {{tmdb-{series.tmdb_id}}}"
+                    series_folder = self.generator.sanitize(series_folder)
                 else:
-                    series_folder = series.title
-                series_folder = self.generator.sanitize(series_folder)
+                    series_folder = self.generator.sanitize(parsed.title)
             else:
-                series_folder = self.generator.sanitize(parsed.title)
+                # Fallback: use parsed title (already cleaned)
+                if parsed.year:
+                    series_folder = f"{parsed.title} ({parsed.year})"
+                else:
+                    series_folder = parsed.title
+                series_folder = self.generator.sanitize(series_folder)
             
             season_folder = f"Season {parsed.season:02d}"
             return base_dir / series_folder / season_folder / new_name
         
         elif parsed.media_type == MediaType.MOVIE:
-            # Movies go in their own folder
+            # Movies go in their own folder - folder name same as file (with Plex hints)
             movie_folder = Path(new_name).stem
             return base_dir / movie_folder / new_name
         
@@ -420,7 +696,8 @@ class SmartRenamer:
                 original_name=file_path.name,
                 new_name=None,
                 success=False,
-                error="File not found"
+                error="File not found",
+                metadata_found=False
             )
         
         if file_path.suffix.lower() not in self.MEDIA_EXTENSIONS:
@@ -430,38 +707,37 @@ class SmartRenamer:
                 original_name=file_path.name,
                 new_name=None,
                 success=False,
-                error=f"Not a media file: {file_path.suffix}"
+                error=f"Not a media file: {file_path.suffix}",
+                metadata_found=False
             )
         
         # Parse filename
         parsed = self.parser.parse(file_path.name)
         
-        if parsed.media_type == MediaType.UNKNOWN:
-            return RenameResult(
-                original_path=file_path,
-                new_path=None,
-                original_name=file_path.name,
-                new_name=None,
-                success=False,
-                error="Could not detect media type"
-            )
+        # Generate new name - returns (new_name, folder_name, tmdb_id, imdb_id)
+        # folder_name includes Plex hints like {tmdb-123456} for TV shows
+        use_fallback = False
+        new_name, folder_name, tmdb_id, imdb_id = None, None, None, None
+        metadata_found = False
         
-        # Generate new name
-        new_name, tmdb_title, tmdb_id = self.generate_new_name(parsed, file_path.suffix)
+        if parsed.media_type != MediaType.UNKNOWN:
+            new_name, folder_name, tmdb_id, imdb_id = self.generate_new_name(parsed, file_path.suffix)
+            metadata_found = new_name is not None
         
+        # If metadata lookup failed or media type unknown, use fallback cleaning
         if not new_name:
-            return RenameResult(
-                original_path=file_path,
-                new_path=None,
-                original_name=file_path.name,
-                new_name=None,
-                success=False,
-                error="TMDB lookup failed"
-            )
+            logger.info(f"Metadata lookup failed, using fallback cleaning for: {file_path.name}")
+            new_name = self.generate_clean_fallback_name(parsed, file_path.suffix)
+            use_fallback = True
+            metadata_found = False
+            # Use parsed title as the folder name for consistency
+            folder_name = parsed.title
+            tmdb_id = None
+            imdb_id = None
         
-        # Get target path
+        # Get target path - pass folder_name for TV shows with Plex hints
         base_dir = output_dir or file_path.parent
-        target_path = self.get_target_path(parsed, new_name, base_dir)
+        target_path = self.get_target_path(parsed, new_name, base_dir, use_fallback, folder_name)
         
         # Check if already named correctly
         if file_path == target_path:
@@ -471,8 +747,10 @@ class SmartRenamer:
                 original_name=file_path.name,
                 new_name=new_name,
                 success=True,
-                tmdb_title=tmdb_title,
+                tmdb_title=folder_name,
                 tmdb_id=tmdb_id,
+                imdb_id=imdb_id,
+                metadata_found=metadata_found,
                 error="Already correctly named"
             )
         
@@ -483,8 +761,10 @@ class SmartRenamer:
                 original_name=file_path.name,
                 new_name=new_name,
                 success=True,
-                tmdb_title=tmdb_title,
-                tmdb_id=tmdb_id
+                tmdb_title=folder_name,
+                tmdb_id=tmdb_id,
+                imdb_id=imdb_id,
+                metadata_found=metadata_found
             )
         
         # Execute rename
@@ -494,14 +774,21 @@ class SmartRenamer:
             
             logger.info(f"Renamed: {file_path.name} -> {new_name}")
             
+            # Create .nfo file with IMDB URL for Plex matching (MOVIES ONLY)
+            # TV shows use folder naming with {tvdb-xxx} or {tmdb-xxx} instead
+            if imdb_id and parsed.media_type == MediaType.MOVIE:
+                self._create_nfo_file(target_path, imdb_id)
+            
             return RenameResult(
                 original_path=file_path,
                 new_path=target_path,
                 original_name=file_path.name,
                 new_name=new_name,
                 success=True,
-                tmdb_title=tmdb_title,
-                tmdb_id=tmdb_id
+                tmdb_title=folder_name,
+                tmdb_id=tmdb_id,
+                imdb_id=imdb_id,
+                metadata_found=metadata_found
             )
         except Exception as e:
             logger.error(f"Rename failed: {e}")
@@ -512,8 +799,10 @@ class SmartRenamer:
                 new_name=new_name,
                 success=False,
                 error=str(e),
-                tmdb_title=tmdb_title,
-                tmdb_id=tmdb_id
+                tmdb_title=folder_name,
+                tmdb_id=tmdb_id,
+                imdb_id=imdb_id,
+                metadata_found=metadata_found
             )
     
     def rename_files(

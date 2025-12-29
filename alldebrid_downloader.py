@@ -17,7 +17,7 @@ import subprocess
 import logging
 import requests
 from pathlib import Path
-from typing import List, Optional, Dict, Callable
+from typing import List, Optional, Dict, Callable, Tuple
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -36,17 +36,21 @@ except ImportError:
 
 
 class AllDebridDownloader:
-    """Downloads and organizes files from AllDebrid with TMDB integration."""
+    """Downloads and organizes files from AllDebrid with IMDB/TMDB integration."""
     
     def __init__(
         self,
         api_key: str,
-        download_dir: str = "/Users/sharvin/Downloads/AllDebrid",
+        download_dir: str = None,
         tmdb_token: Optional[str] = None,
         tmdb_api_key: Optional[str] = None,
+        omdb_api_key: Optional[str] = None,
         progress_callback: Optional[Callable[[str, str], None]] = None
     ):
         self.api_key = api_key
+        # Use provided dir, or temp directory as fallback
+        if download_dir is None:
+            download_dir = os.path.join(Path.home(), "Downloads", "AllDebrid")
         self.download_dir = Path(download_dir)
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.progress_callback = progress_callback or (lambda msg, level: None)
@@ -58,6 +62,7 @@ class AllDebridDownloader:
         if TMDB_AVAILABLE:
             tmdb_token = tmdb_token or os.getenv("TMDB_ACCESS_TOKEN")
             tmdb_api_key = tmdb_api_key or os.getenv("TMDB_API_KEY")
+            omdb_api_key = omdb_api_key or os.getenv("OMDB_API_KEY")
             
             if tmdb_token or tmdb_api_key:
                 self.tmdb_client = TMDBClient(
@@ -66,10 +71,14 @@ class AllDebridDownloader:
                 )
                 self.smart_renamer = SmartRenamer(
                     tmdb_client=self.tmdb_client,
+                    omdb_api_key=omdb_api_key,
                     organize_folders=True,
                     include_episode_title=True
                 )
-                self._log("✅ TMDB integration enabled")
+                if omdb_api_key:
+                    self._log("✅ IMDB (OMDB) + TMDB integration enabled")
+                else:
+                    self._log("✅ TMDB integration enabled (OMDB not configured)")
             else:
                 self._log("⚠️ TMDB credentials not found. Set TMDB_ACCESS_TOKEN or TMDB_API_KEY", "warning")
         
@@ -79,8 +88,12 @@ class AllDebridDownloader:
     
     def _log(self, message: str, level: str = "info"):
         """Log message and call progress callback."""
-        logger.info(message)
-        self.progress_callback(message, level)
+        # Strip ANSI escape codes from aria2c output
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|\[\d+;\d+m|\[\d+m')
+        clean_message = ansi_escape.sub('', message)
+        logger.info(clean_message)
+        self.progress_callback(clean_message, level)
     
     def _check_aria2(self) -> bool:
         """Check if aria2c is installed."""
@@ -222,20 +235,23 @@ class AllDebridDownloader:
         
         return downloaded_files
     
-    def smart_rename_file(self, file_path: Path, output_dir: Path) -> Optional[Path]:
+    def smart_rename_file(self, file_path: Path, output_dir: Path) -> Tuple[Optional[Path], bool]:
         """
-        Rename a file using TMDB metadata.
+        Rename a file using IMDB (OMDB) as primary, TMDB as fallback.
+        Creates .nfo file with IMDB URL for Plex matching.
         
         Args:
             file_path: Path to the downloaded file
             output_dir: Output directory for organized files
             
         Returns:
-            New path if renamed, original path if TMDB unavailable, None on error
+            Tuple of (new_path, metadata_found)
+            - new_path: New path if renamed, original path if metadata unavailable, None on error
+            - metadata_found: True if IMDB/TMDB metadata was found
         """
         if not self.smart_renamer:
-            self._log("⚠️ TMDB not configured, skipping smart rename", "warning")
-            return file_path
+            self._log("⚠️ IMDB/TMDB not configured, skipping smart rename", "warning")
+            return file_path, False
         
         self._log(f"🔍 Looking up metadata for: {file_path.name}")
         
@@ -244,19 +260,31 @@ class AllDebridDownloader:
         if result.success and result.new_path:
             if result.new_name and result.original_name != result.new_name:
                 self._log(f"   ✅ Renamed: {result.new_name}")
-                if result.tmdb_title:
+                # Log IMDB ID if found (primary source)
+                if result.imdb_id:
+                    self._log(f"   🎬 IMDB: {result.imdb_id} - {result.tmdb_title}")
+                elif result.tmdb_id:
                     self._log(f"   📺 TMDB: {result.tmdb_title} (ID: {result.tmdb_id})")
+                
+                # Log if .nfo file was created
+                if result.imdb_id:
+                    self._log(f"   📄 Created .nfo files for Plex matching")
             else:
                 self._log(f"   ℹ️ Already correctly named")
-            return result.new_path
+            
+            # Track metadata status
+            if not result.metadata_found:
+                self._log(f"   ⚠️ No IMDB/TMDB metadata found - will use Malayalam library", "warning")
+            
+            return result.new_path, result.metadata_found
         else:
             self._log(f"   ⚠️ Rename failed: {result.error}", "warning")
-            return file_path
+            return file_path, False
     
     def download_and_organize_smart(
         self,
         links: List[str],
-        output_dir: str = "/Users/sharvin/Documents/Processed",
+        output_dir: str = None,
         language: Optional[str] = None,
         filter_audio: bool = False
     ) -> Dict:
@@ -270,15 +298,18 @@ class AllDebridDownloader:
             filter_audio: Whether to filter audio tracks
             
         Returns:
-            Dict with download/organize results
+            Dict with download/organize results including metadata_found status
         """
         results = {
             "downloaded": [],
             "renamed": [],
             "filtered": [],
-            "errors": []
+            "errors": [],
+            "metadata_found": False  # Track if any file had metadata
         }
         
+        if output_dir is None:
+            output_dir = os.path.join(Path.home(), "Documents", "Processed")
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
@@ -294,19 +325,24 @@ class AllDebridDownloader:
             self._log("❌ No files downloaded!", "error")
             return results
         
-        # Step 2: Smart rename using TMDB
+        # Step 2: Smart rename using IMDB/TMDB
         self._log("=" * 50)
-        self._log("🎬 STEP 2: Renaming with TMDB metadata")
+        self._log("🎬 STEP 2: Renaming with IMDB/TMDB metadata")
         self._log("=" * 50)
         
         renamed_files = []
+        any_metadata_found = False
         for file_path in downloaded_files:
-            new_path = self.smart_rename_file(file_path, output_path)
+            new_path, metadata_found = self.smart_rename_file(file_path, output_path)
+            if metadata_found:
+                any_metadata_found = True
             if new_path:
                 renamed_files.append(new_path)
                 results["renamed"].append(str(new_path))
             else:
                 results["errors"].append(f"Failed to rename: {file_path.name}")
+        
+        results["metadata_found"] = any_metadata_found
         
         # Step 3: Filter audio tracks (optional)
         if filter_audio and language:
@@ -340,10 +376,13 @@ class AllDebridDownloader:
         
         return results
     
-    def download_and_organize(self, links: List[str], output_dir: str = "/Users/sharvin/Documents/Processed",
+    def download_and_organize(self, links: List[str], output_dir: str = None,
                                language: str = "malayalam") -> Dict:
         """Download links, organize files, and filter audio."""
         from media_organizer import MediaOrganizer, AudioTrackFilter
+        
+        if output_dir is None:
+            output_dir = os.path.join(Path.home(), "Documents", "Processed")
         
         results = {
             "downloaded": [],
@@ -412,7 +451,7 @@ def main():
     parser.add_argument('links', nargs='?', help='AllDebrid links (space or newline separated)')
     parser.add_argument('--api-key', '-k', help='AllDebrid API key (or set ALLDEBRID_API_KEY env var)')
     parser.add_argument('--tmdb-token', '-t', help='TMDB access token (or set TMDB_ACCESS_TOKEN env var)')
-    parser.add_argument('--output', '-o', default='/Users/sharvin/Documents/Processed', help='Output directory')
+    parser.add_argument('--output', '-o', default=None, help='Output directory')
     parser.add_argument('--language', '-l', default='english', help='Audio language to keep')
     parser.add_argument('--filter-audio', '-f', action='store_true', help='Filter audio tracks by language')
     parser.add_argument('--download-only', action='store_true', help='Only download, skip organize/rename')

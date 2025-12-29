@@ -732,6 +732,16 @@
   100% { background-position: 200% 0; }
 }
 
+@keyframes sparkle-sweep {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
 @keyframes glow-pulse {
   0%, 100% { 
     box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), 0 0 40px rgba(6, 182, 212, 0.2);
@@ -938,6 +948,11 @@ html, body {
 .tab-toggle-btn.active.music {
   background: linear-gradient(135deg, #ec4899, #8b5cf6);
   box-shadow: 0 8px 30px rgba(236, 72, 153, 0.5), 0 0 60px rgba(236, 72, 153, 0.2);
+}
+
+.tab-toggle-btn.active.plex {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  box-shadow: 0 8px 30px rgba(245, 158, 11, 0.5), 0 0 60px rgba(245, 158, 11, 0.2);
 }
 
 .tab-toggle-btn:not(.active) {

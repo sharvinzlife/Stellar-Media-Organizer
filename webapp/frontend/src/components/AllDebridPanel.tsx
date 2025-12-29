@@ -1,7 +1,7 @@
 import React, { useState, useEffect, ChangeEvent } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/Card';
 import Button from './ui/Button';
-import { Cloud, Download, Loader2, Link2, CheckCircle, HardDrive, FolderOpen, Sparkles } from 'lucide-react';
+import { Cloud, Download, Loader2, Link2, CheckCircle, HardDrive, FolderOpen, Sparkles, Film, Filter, Upload, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
@@ -24,6 +24,17 @@ interface NASLocation {
   categories: string[];
 }
 
+interface JobProgress {
+  phase: string;
+  renamed_files: number;
+  filtered_files: number;
+  nas_destination: string | null;
+  detected_category: string | null;
+  metadata_found: string;
+  plex_scan_status: string | null;
+  plex_library_name: string | null;
+}
+
 // Extend Window interface for global addLog function
 declare global {
   interface Window {
@@ -39,6 +50,18 @@ const CATEGORY_LABELS: Record<string, string> = {
   'tv': 'TV Shows',
   'malayalam-tv-shows': 'Malayalam TV Shows',
   'malayalam tv shows': 'Malayalam TV Shows',
+  'music': 'Music',
+};
+
+const PHASE_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+  'pending': { label: 'Pending', icon: '⏳', color: 'text-gray-400' },
+  'downloading': { label: 'Downloading', icon: '⬇️', color: 'text-blue-400' },
+  'filtering': { label: 'Filtering Audio', icon: '🎵', color: 'text-purple-400' },
+  'organizing': { label: 'Organizing', icon: '📁', color: 'text-yellow-400' },
+  'uploading': { label: 'Uploading to NAS', icon: '📤', color: 'text-emerald-400' },
+  'scanning': { label: 'Plex Scanning', icon: '📺', color: 'text-orange-400' },
+  'completed': { label: 'Completed', icon: '✅', color: 'text-green-400' },
+  'failed': { label: 'Failed', icon: '❌', color: 'text-red-400' },
 };
 
 const AllDebridPanel: React.FC = () => {
@@ -53,6 +76,12 @@ const AllDebridPanel: React.FC = () => {
   const [selectedNAS, setSelectedNAS] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [localPath, setLocalPath] = useState<string>('/Users/sharvin/Documents/Processed');
+  
+  // Enhanced progress tracking
+  const [detectedCategory, setDetectedCategory] = useState<string | null>(null);
+  const [, setCurrentJobId] = useState<number | null>(null);
+  const [jobProgress, setJobProgress] = useState<JobProgress | null>(null);
+  const [progressPercent, setProgressPercent] = useState<number>(0);
 
   useEffect(() => {
     checkStatus();
@@ -160,26 +189,81 @@ const AllDebridPanel: React.FC = () => {
   };
 
   const pollJobStatus = async (jobId: number): Promise<void> => {
+    let lastLogCount = 0;
+    setCurrentJobId(jobId);
+    setDetectedCategory(null);
+    setJobProgress(null);
+    setProgressPercent(0);
+    
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(`/api/v1/alldebrid/jobs/${jobId}`);
         const data = await response.json();
-        const job = data.job;
         
-        // Add new logs
-        if (job.logs && job.logs.length > 0) {
-          const lastLog = job.logs[job.logs.length - 1];
-          window.addLog?.(lastLog.message, lastLog.level);
+        // Update progress percent
+        if (data.progress) {
+          setProgressPercent(data.progress);
         }
         
-        if (job.status === 'completed') {
+        // Update enhanced progress tracking
+        const progress: JobProgress = {
+          phase: data.phase || 'pending',
+          renamed_files: data.renamed_files || 0,
+          filtered_files: data.filtered_files || 0,
+          nas_destination: data.nas_destination,
+          detected_category: data.detected_category,
+          metadata_found: data.metadata_found || 'unknown',
+          plex_scan_status: data.plex_scan_status,
+          plex_library_name: data.plex_library_name,
+        };
+        setJobProgress(progress);
+        
+        // Update detected category if changed
+        if (progress.detected_category && progress.detected_category !== detectedCategory) {
+          setDetectedCategory(progress.detected_category);
+          // Show notification for auto-detected category
+          toast.info(`🔍 Auto-detected: ${CATEGORY_LABELS[progress.detected_category] || progress.detected_category}`);
+        }
+        
+        // Show notification for no metadata found (defaulting to Malayalam)
+        if (progress.metadata_found === 'no' && progress.phase === 'organizing') {
+          toast.warning('⚠️ No IMDB/TMDB data found - defaulting to Malayalam library');
+        }
+        
+        // Show Plex scan notification
+        if (progress.plex_scan_status === 'scanning' && progress.plex_library_name) {
+          toast.info(`📺 Scanning Plex library: ${progress.plex_library_name}`);
+        }
+        
+        // Add new logs since last poll
+        if (data.logs && data.logs.length > lastLogCount) {
+          const newLogs = data.logs.slice(lastLogCount);
+          newLogs.forEach((log: { message: string; level: string }) => {
+            window.addLog?.(log.message, log.level);
+          });
+          lastLogCount = data.logs.length;
+        }
+        
+        if (data.status === 'completed') {
           clearInterval(pollInterval);
           toast.success('Download completed!');
+          if (progress.plex_library_name) {
+            toast.success(`📺 Plex scan triggered for ${progress.plex_library_name}`);
+          }
           setLoading(false);
-        } else if (job.status === 'failed') {
+          setCurrentJobId(null);
+          // Keep progress visible for a moment
+          setTimeout(() => {
+            setJobProgress(null);
+            setDetectedCategory(null);
+          }, 15000);
+        } else if (data.status === 'failed') {
           clearInterval(pollInterval);
-          toast.error(job.error || 'Download failed');
+          toast.error(data.error || 'Download failed');
           setLoading(false);
+          setCurrentJobId(null);
+          setJobProgress(null);
+          setDetectedCategory(null);
         }
       } catch {
         // Continue polling
@@ -190,6 +274,7 @@ const AllDebridPanel: React.FC = () => {
     setTimeout(() => {
       clearInterval(pollInterval);
       setLoading(false);
+      setCurrentJobId(null);
     }, 30 * 60 * 1000);
   };
 
@@ -361,11 +446,75 @@ const AllDebridPanel: React.FC = () => {
               </select>
 
               <p className="text-xs text-emerald-400/70 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
-                📁 Files → {selectedNAS} → {CATEGORY_LABELS[selectedCategory] || selectedCategory}
+                {detectedCategory ? (
+                  <>
+                    <span className="text-yellow-400">🔍 Auto-detected:</span>{' '}
+                    <span className="font-semibold text-emerald-300">
+                      {selectedNAS} → {CATEGORY_LABELS[detectedCategory] || detectedCategory}
+                    </span>
+                  </>
+                ) : (
+                  <>📁 Files → {selectedNAS} → {CATEGORY_LABELS[selectedCategory] || selectedCategory}</>
+                )}
               </p>
             </div>
           )}
         </div>
+
+        {/* Enhanced Progress Display */}
+        {loading && jobProgress && (
+          <div className="space-y-3 p-4 rounded-xl bg-slate-900/50 border border-slate-700/50">
+            {/* Progress Bar */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className={PHASE_LABELS[jobProgress.phase]?.color || 'text-gray-400'}>
+                  {PHASE_LABELS[jobProgress.phase]?.icon} {PHASE_LABELS[jobProgress.phase]?.label || jobProgress.phase}
+                </span>
+                <span className="text-slate-400">{Math.round(progressPercent)}%</span>
+              </div>
+              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Progress Details */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {jobProgress.renamed_files > 0 && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                  <Film className="h-3.5 w-3.5 text-yellow-400" />
+                  <span className="text-yellow-300">Renamed: {jobProgress.renamed_files}</span>
+                </div>
+              )}
+              {jobProgress.filtered_files > 0 && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                  <Filter className="h-3.5 w-3.5 text-purple-400" />
+                  <span className="text-purple-300">Filtered: {jobProgress.filtered_files}</span>
+                </div>
+              )}
+              {jobProgress.nas_destination && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 col-span-2">
+                  <Upload className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-emerald-300">→ {jobProgress.nas_destination}</span>
+                </div>
+              )}
+              {jobProgress.plex_scan_status === 'scanning' && jobProgress.plex_library_name && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-orange-500/10 border border-orange-500/20 col-span-2">
+                  <RefreshCw className="h-3.5 w-3.5 text-orange-400 animate-spin" />
+                  <span className="text-orange-300">Plex scanning: {jobProgress.plex_library_name}</span>
+                </div>
+              )}
+              {jobProgress.metadata_found === 'no' && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 col-span-2">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                  <span className="text-amber-300">No IMDB/TMDB data → Malayalam library</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Download Button */}
         <Button

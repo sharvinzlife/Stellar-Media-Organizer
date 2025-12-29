@@ -55,6 +55,16 @@ class Job(Base):
     total_files = Column(Integer, default=0)
     processed_files = Column(Integer, default=0)
     
+    # Enhanced progress tracking
+    phase = Column(String(50), default="pending")  # pending, downloading, filtering, organizing, uploading, scanning, completed
+    renamed_files = Column(Integer, default=0)
+    filtered_files = Column(Integer, default=0)
+    nas_destination = Column(String(255), nullable=True)  # e.g., "Lharmony/Malayalam Movies"
+    detected_category = Column(String(100), nullable=True)  # Auto-detected category
+    metadata_found = Column(String(10), default="unknown")  # yes, no, unknown
+    plex_scan_status = Column(String(50), nullable=True)  # pending, scanning, completed, failed
+    plex_library_name = Column(String(100), nullable=True)  # Library being scanned
+    
     # Size information (in bytes)
     input_size = Column(Integer, nullable=True)
     output_size = Column(Integer, nullable=True)
@@ -91,6 +101,15 @@ class Job(Base):
             "current_file": self.current_file,
             "total_files": self.total_files,
             "processed_files": self.processed_files,
+            # Enhanced tracking fields
+            "phase": self.phase,
+            "renamed_files": self.renamed_files,
+            "filtered_files": self.filtered_files,
+            "nas_destination": self.nas_destination,
+            "detected_category": self.detected_category,
+            "metadata_found": self.metadata_found,
+            "plex_scan_status": self.plex_scan_status,
+            "plex_library_name": self.plex_library_name,
             "input_size": self.input_size,
             "output_size": self.output_size,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -121,6 +140,43 @@ class DatabaseManager:
         
         # Create tables if they don't exist
         Base.metadata.create_all(self.engine)
+        
+        # Run migrations for new columns
+        self._migrate_schema()
+    
+    def _migrate_schema(self):
+        """Add new columns to existing tables if they don't exist."""
+        import sqlite3
+        
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+        
+        # Get existing columns
+        cursor.execute("PRAGMA table_info(jobs)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        
+        # New columns to add
+        new_columns = [
+            ("phase", "VARCHAR(50) DEFAULT 'pending'"),
+            ("renamed_files", "INTEGER DEFAULT 0"),
+            ("filtered_files", "INTEGER DEFAULT 0"),
+            ("nas_destination", "VARCHAR(255)"),
+            ("detected_category", "VARCHAR(100)"),
+            ("metadata_found", "VARCHAR(10) DEFAULT 'unknown'"),
+            ("plex_scan_status", "VARCHAR(50)"),
+            ("plex_library_name", "VARCHAR(100)"),
+        ]
+        
+        for col_name, col_type in new_columns:
+            if col_name not in existing_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE jobs ADD COLUMN {col_name} {col_type}")
+                    print(f"Added column: {col_name}")
+                except sqlite3.OperationalError:
+                    pass  # Column might already exist
+        
+        conn.commit()
+        conn.close()
     
     @contextmanager
     def get_session(self) -> Session:
@@ -215,6 +271,41 @@ class DatabaseManager:
                     job.current_file = current_file
                 if processed_files is not None:
                     job.processed_files = processed_files
+                session.commit()
+                session.refresh(job)
+            return job
+    
+    def update_job_phase(
+        self,
+        job_id: int,
+        phase: str,
+        nas_destination: Optional[str] = None,
+        detected_category: Optional[str] = None,
+        renamed_files: Optional[int] = None,
+        filtered_files: Optional[int] = None,
+        metadata_found: Optional[str] = None,
+        plex_scan_status: Optional[str] = None,
+        plex_library_name: Optional[str] = None,
+    ) -> Optional[Job]:
+        """Update job phase and enhanced tracking fields"""
+        with self.get_session() as session:
+            job = session.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.phase = phase
+                if nas_destination is not None:
+                    job.nas_destination = nas_destination
+                if detected_category is not None:
+                    job.detected_category = detected_category
+                if renamed_files is not None:
+                    job.renamed_files = renamed_files
+                if filtered_files is not None:
+                    job.filtered_files = filtered_files
+                if metadata_found is not None:
+                    job.metadata_found = metadata_found
+                if plex_scan_status is not None:
+                    job.plex_scan_status = plex_scan_status
+                if plex_library_name is not None:
+                    job.plex_library_name = plex_library_name
                 session.commit()
                 session.refresh(job)
             return job

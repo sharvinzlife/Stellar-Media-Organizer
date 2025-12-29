@@ -12,13 +12,6 @@ interface JobLogResponse {
   }>;
 }
 
-interface ActiveJobsResponse {
-  success: boolean;
-  jobs: Array<{
-    id: string;
-  }>;
-}
-
 // Extend Window interface for global addLog function
 declare global {
   interface Window {
@@ -46,18 +39,18 @@ const LogViewer: React.FC = () => {
   useEffect(() => {
     const pollLogs = async (): Promise<void> => {
       try {
-        // Get active jobs
+        // Get active jobs from unified endpoint
         const activeRes = await fetch('/api/v1/jobs/active');
-        const activeData: ActiveJobsResponse = await activeRes.json();
+        const activeData = await activeRes.json();
 
-        if (activeData.success && activeData.jobs.length > 0) {
+        if (activeData.success && activeData.jobs && activeData.jobs.length > 0) {
           const job = activeData.jobs[0];
 
           // Get logs for this job
           const logsRes = await fetch(`/api/v1/jobs/${job.id}/logs`);
           const logsData: JobLogResponse = await logsRes.json();
 
-          if (logsData.success && logsData.logs.length > 0) {
+          if (logsData.success && logsData.logs && logsData.logs.length > 0) {
             setLogs(
               logsData.logs.map((log, idx) => ({
                 id: `${job.id}-${idx}`,
@@ -67,13 +60,40 @@ const LogViewer: React.FC = () => {
               }))
             );
           }
+        } else {
+          // Check recent jobs for logs if no active jobs
+          const recentRes = await fetch('/api/v1/jobs/recent?limit=1');
+          const recentData = await recentRes.json();
+          
+          if (recentData.success && recentData.jobs && recentData.jobs.length > 0) {
+            const job = recentData.jobs[0];
+            // Only show logs from jobs completed in the last 5 minutes
+            const completedAt = job.completed_at ? new Date(job.completed_at) : null;
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+            
+            if (completedAt && completedAt > fiveMinutesAgo) {
+              const logsRes = await fetch(`/api/v1/jobs/${job.id}/logs`);
+              const logsData: JobLogResponse = await logsRes.json();
+              
+              if (logsData.success && logsData.logs && logsData.logs.length > 0) {
+                setLogs(
+                  logsData.logs.map((log, idx) => ({
+                    id: `${job.id}-${idx}`,
+                    message: log.message,
+                    type: log.level as LogEntry['type'],
+                    timestamp: new Date(log.timestamp).toLocaleTimeString(),
+                  }))
+                );
+              }
+            }
+          }
         }
       } catch (error) {
         console.error('Failed to poll logs:', error);
       }
     };
 
-    const interval = setInterval(pollLogs, 1000);
+    const interval = setInterval(pollLogs, 2000);
     pollLogs(); // Initial poll
 
     return () => clearInterval(interval);

@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.0] - 2025-12-28 🎬
+
+### 🎬 Plex Integration
+- **Plex Dashboard** - New dedicated Plex tab in the web app for library management
+- **Plex Client** - Full Plex API integration for library scanning and status
+- **Tautulli Integration** - Activity monitoring and statistics (optional)
+- **Auto Plex Scan** - Automatic library scan after NAS transfers
+
+### 🔧 Smart Renaming & NFO Files
+- **IMDB Primary** - OMDB (IMDB) is now the PRIMARY metadata source, TMDB as fallback
+- **Plex-Compatible Naming** - Movies: `Movie Name (Year) {imdb-tt1234567}.mkv`
+- **TV Show Naming** - Folders: `Show Name (Year) {tmdb-123456}/Season XX/`
+- **NFO File Creation** - Two .nfo variations for maximum Plex compatibility:
+  - `Movie Name (Year) {imdb-tt1234567}.nfo`
+  - `Movie Name (Year) {imdb-tt1234567}-imdb.nfo`
+- **Smart Category Detection** - Only defaults to Malayalam when NO metadata found
+
+### 🛡️ Robust Service Management
+- **Unified Service Manager** - `scripts/stellar-service.sh` with nuclear cleanup
+- **Watchdog Mode** - Auto-restart on crash with health checks every 30s
+- **Systemd Service** - Auto-start on boot with `scripts/install-service.sh`
+- **No Port Conflicts** - Always kills existing processes before starting fresh
+
+### 🎨 UI Improvements
+- **Activity Logs Repositioned** - Moved after Job History for easier viewing
+- **Enhanced Progress Tracking** - Phase indicators (downloading, filtering, organizing, uploading, scanning)
+- **Metadata Status** - Shows whether IMDB/TMDB data was found
+- **Plex Scan Status** - Real-time Plex library scan progress
+
+### 🐛 Bug Fixes
+- Fixed ANSI escape codes showing in download progress (aria2c output cleaned)
+- Fixed job progress stuck at "Pending 0%" - proper parameter passing to background threads
+- Fixed category detection defaulting to Malayalam even when IMDB data found
+- Fixed NAS transfer not uploading .nfo files alongside movies
+
+---
+
 ## [3.0.0] - 2025-12-26 🚀
 
 ### 🌐 NAS Integration
@@ -83,6 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[3.2.0]: https://github.com/sharvinzlife/Stellar-Media-Organizer/compare/v3.0.0...v3.2.0
 [3.0.0]: https://github.com/sharvinzlife/Stellar-Media-Organizer/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/sharvinzlife/Stellar-Media-Organizer/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/sharvinzlife/Stellar-Media-Organizer/releases/tag/v1.0.0
