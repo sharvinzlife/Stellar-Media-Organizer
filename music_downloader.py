@@ -609,6 +609,9 @@ class MusicDownloader:
             # Ensure output directory exists
             self.output_dir.mkdir(parents=True, exist_ok=True)
             
+            # Detect if this is a playlist/album URL
+            is_playlist = 'playlist' in url.lower() or 'album' in url.lower()
+            
             # Use Python 3.12 venv to run spotdl
             # spotdl --output expects: "/full/path/{template-vars}"
             # Build the full template path correctly
@@ -623,6 +626,9 @@ class MusicDownloader:
             
             self._log(f"   Using Python 3.12 venv: {spotdl_python}")
             self._log(f"   Output template: {output_template}")
+            
+            playlist_folder = None
+            downloaded_files = []
             
             try:
                 process = subprocess.Popen(
@@ -640,11 +646,27 @@ class MusicDownloader:
                         self._log(f"   {line}")
                         if 'Downloaded' in line or 'Skipping' in line:
                             files.append(line)
+                            downloaded_files.append(line)
+                            
+                            # Extract playlist folder from first downloaded file
+                            if is_playlist and not playlist_folder:
+                                # Look for pattern: "Downloaded "Artist - Title": /path/to/Playlist Name/01 - Artist - Title.flac"
+                                import re
+                                path_match = re.search(r':\s*(.+\.(?:flac|mp3|m4a|opus))', line)
+                                if path_match:
+                                    file_path = Path(path_match.group(1).strip())
+                                    if file_path.exists() and file_path.parent != self.output_dir:
+                                        playlist_folder = file_path.parent
+                                        self._log(f"   📁 Detected playlist folder: {playlist_folder.name}")
                 
                 process.wait()
                 
                 if process.returncode == 0:
                     self._log(f"✅ Spotify download complete: {url[:40]}...", "success")
+                    
+                    # Extract cover image for playlists/albums
+                    if is_playlist and playlist_folder and playlist_folder.exists():
+                        self._extract_spotify_cover(url, playlist_folder)
                 else:
                     errors.append(f"spotdl failed for {url}")
                     
@@ -659,6 +681,45 @@ class MusicDownloader:
             message=f"Downloaded from Spotify",
             errors=errors
         )
+    
+    def _extract_spotify_cover(self, url: str, playlist_folder: Path):
+        """Extract cover image for Spotify playlist/album"""
+        try:
+            cover_path = playlist_folder / 'cover.jpg'
+            
+            # Check if cover already exists
+            if cover_path.exists():
+                self._log(f"   🖼️ Cover already exists: cover.jpg")
+                return
+            
+            self._log(f"   🖼️ Extracting cover image...")
+            
+            # spotdl embeds cover art in the audio files, extract from first track
+            audio_files = sorted(playlist_folder.glob('*.flac')) or sorted(playlist_folder.glob('*.mp3'))
+            
+            if not audio_files:
+                self._log(f"   ⚠️ No audio files found to extract cover from", "warning")
+                return
+            
+            first_track = audio_files[0]
+            
+            # Use ffmpeg to extract embedded cover art
+            try:
+                result = subprocess.run(
+                    ['ffmpeg', '-i', str(first_track), '-an', '-vcodec', 'copy', str(cover_path)],
+                    capture_output=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0 and cover_path.exists():
+                    self._log(f"   🖼️ Saved cover: cover.jpg", "success")
+                else:
+                    self._log(f"   ⚠️ Could not extract cover from audio file", "warning")
+            except Exception as e:
+                self._log(f"   ⚠️ Cover extraction failed: {e}", "warning")
+                
+        except Exception as e:
+            self._log(f"   ⚠️ Cover extraction error: {e}", "warning")
     
     def _download_alldebrid(self, urls: List[str]) -> DownloadResult:
         """Download from AllDebrid"""

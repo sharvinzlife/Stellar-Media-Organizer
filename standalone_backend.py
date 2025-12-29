@@ -2355,6 +2355,34 @@ def process_music_download_background(
             
             add_job_log(job_id, f"📁 Found {len(audio_files)} audio files", "info")
             
+            # Extract cover images for playlist/album folders
+            try:
+                playlist_folders = set()
+                for audio_file in audio_files:
+                    # If file is in a subfolder (not directly in temp_dir), it's likely a playlist/album
+                    if audio_file.parent != Path(temp_dir):
+                        playlist_folders.add(audio_file.parent)
+                
+                for folder in playlist_folders:
+                    cover_path = folder / 'cover.jpg'
+                    if not cover_path.exists():
+                        # Extract cover from first audio file in folder
+                        audio_in_folder = sorted([f for f in folder.glob('*') if f.suffix.lower() in audio_extensions])
+                        if audio_in_folder:
+                            try:
+                                import subprocess
+                                result = subprocess.run(
+                                    ['ffmpeg', '-i', str(audio_in_folder[0]), '-an', '-vcodec', 'copy', str(cover_path)],
+                                    capture_output=True,
+                                    timeout=30
+                                )
+                                if result.returncode == 0 and cover_path.exists():
+                                    add_job_log(job_id, f"🖼️ Extracted cover for: {folder.name}", "info")
+                            except Exception as e:
+                                logger.debug(f"Could not extract cover for {folder.name}: {e}")
+            except Exception as e:
+                logger.debug(f"Cover extraction error: {e}")
+            
             # Initialize enhancer for 7.0 surround upmix
             enhancer = None
             if enhance_audio:
@@ -2399,6 +2427,22 @@ def process_music_download_background(
                         add_job_log(job_id, f"📁 ({idx}/{total}) {display_name}", "info")
                         shutil.copy2(str(audio_file), str(output_path))
                     
+                    # Fix V.A./Various Artists metadata for Plex
+                    try:
+                        from music_organizer import AudioEnhancer
+                        temp_enhancer = AudioEnhancer()
+                        temp_enhancer._fix_va_metadata(str(output_path))
+                    except Exception as e:
+                        logger.debug(f"Could not fix V.A. metadata: {e}")
+                    
+                    # Copy cover.jpg if it exists in the source folder
+                    source_cover = audio_file.parent / 'cover.jpg'
+                    if source_cover.exists():
+                        dest_cover = output_path.parent / 'cover.jpg'
+                        if not dest_cover.exists():
+                            shutil.copy2(str(source_cover), str(dest_cover))
+                            add_job_log(job_id, f"🖼️ Copied cover for: {output_path.parent.name}", "info")
+                    
                     processed_files_list.append(output_path)
                     processed += 1
                     
@@ -2419,23 +2463,37 @@ def process_music_download_background(
                     from core.nas_transfer import NASTransfer
                     nas = NASTransfer()
                     
-                    # Transfer each processed file to music folder
-                    transferred = 0
+                    # Collect all files to transfer (audio + cover images)
+                    files_to_transfer = list(processed_files_list)
+                    
+                    # Add cover.jpg files from each folder
+                    cover_files = set()
                     for file_path in processed_files_list:
+                        cover_path = file_path.parent / 'cover.jpg'
+                        if cover_path.exists() and cover_path not in cover_files:
+                            files_to_transfer.append(cover_path)
+                            cover_files.add(cover_path)
+                    
+                    # Transfer each file to music folder
+                    transferred = 0
+                    for file_path in files_to_transfer:
                         try:
                             rel_path = file_path.relative_to(output_base)
                             nas_dest = f"/music/{rel_path}"
                             
                             if nas.transfer_file(str(file_path), nas_dest, nas_name="lharmony"):
                                 transferred += 1
-                                add_job_log(job_id, f"✅ Transferred: {file_path.name}", "info")
+                                if file_path.name == 'cover.jpg':
+                                    add_job_log(job_id, f"🖼️ Transferred cover: {file_path.parent.name}/cover.jpg", "info")
+                                else:
+                                    add_job_log(job_id, f"✅ Transferred: {file_path.name}", "info")
                             else:
                                 add_job_log(job_id, f"⚠️ Failed to transfer: {file_path.name}", "warning")
                         except Exception as e:
                             add_job_log(job_id, f"⚠️ Transfer error for {file_path.name}: {e}", "warning")
                     
                     nas_transfer_success = transferred > 0
-                    add_job_log(job_id, f"📤 NAS transfer complete: {transferred}/{len(processed_files_list)} files", "info")
+                    add_job_log(job_id, f"📤 NAS transfer complete: {transferred}/{len(files_to_transfer)} files", "info")
                     
                 except Exception as e:
                     add_job_log(job_id, f"⚠️ NAS transfer failed: {e}", "warning")
