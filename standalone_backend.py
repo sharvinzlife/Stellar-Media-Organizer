@@ -2456,9 +2456,6 @@ def process_music_download_background(
             # Transfer to NAS if configured (Lharmony for music)
             nas_transfer_success = False
             if LHARMONY_HOST and processed_files_list:
-                add_job_log(job_id, f"📤 Transferring {len(processed_files_list)} files to NAS (Lharmony)...", "info")
-                db.update_job_progress(job_id, progress=85, current_file="Transferring to NAS...")
-                
                 try:
                     from core.nas_transfer import NASTransfer
                     nas = NASTransfer()
@@ -2474,12 +2471,24 @@ def process_music_download_background(
                             files_to_transfer.append(cover_path)
                             cover_files.add(cover_path)
                     
-                    # Transfer each file to music folder
+                    total_files = len(files_to_transfer)
+                    add_job_log(job_id, f"📤 Transferring {total_files} files to NAS (Lharmony)...", "info")
+                    db.update_job_progress(job_id, progress=85, current_file="Starting NAS transfer...")
+                    
+                    # Transfer each file to music folder (85-95% progress)
                     transferred = 0
-                    for file_path in files_to_transfer:
+                    for idx, file_path in enumerate(files_to_transfer, 1):
                         try:
                             rel_path = file_path.relative_to(output_base)
                             nas_dest = f"/music/{rel_path}"
+                            
+                            # Update progress during transfer (85-95%)
+                            transfer_progress = 85 + (idx / total_files) * 10
+                            db.update_job_progress(
+                                job_id, 
+                                progress=transfer_progress, 
+                                current_file=f"Transferring ({idx}/{total_files}): {file_path.name}"
+                            )
                             
                             if nas.transfer_file(str(file_path), nas_dest, nas_name="lharmony"):
                                 transferred += 1
@@ -2493,7 +2502,7 @@ def process_music_download_background(
                             add_job_log(job_id, f"⚠️ Transfer error for {file_path.name}: {e}", "warning")
                     
                     nas_transfer_success = transferred > 0
-                    add_job_log(job_id, f"📤 NAS transfer complete: {transferred}/{len(files_to_transfer)} files", "info")
+                    add_job_log(job_id, f"📤 NAS transfer complete: {transferred}/{total_files} files", "info")
                     
                 except Exception as e:
                     add_job_log(job_id, f"⚠️ NAS transfer failed: {e}", "warning")
