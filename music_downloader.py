@@ -610,15 +610,19 @@ class MusicDownloader:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             
             # Use Python 3.12 venv to run spotdl
+            # spotdl --output expects: "/full/path/{template-vars}"
+            # Build the full template path correctly
+            output_template = f"{self.output_dir}/{output_format}"
+            
             cmd = [
                 str(spotdl_python), '-m', 'spotdl',
                 'download', url,
-                '--output', str(self.output_dir),
-                '-p', output_format,
-                '--output-format', actual_format,
+                '--output', output_template,
+                '--format', actual_format,
             ]
             
             self._log(f"   Using Python 3.12 venv: {spotdl_python}")
+            self._log(f"   Output template: {output_template}")
             
             try:
                 process = subprocess.Popen(
