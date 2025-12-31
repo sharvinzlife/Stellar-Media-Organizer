@@ -774,7 +774,8 @@ def transfer_to_nas_standalone(source_dir: str, nas_name: str, category: str, lo
         detected = detect_content_type_standalone(detection_name, category, log_func, filter_language, metadata_found)
         job_info['detected_category'] = detected
         
-        log_func(f'🔍 Detection source: {detection_name[:80]}...', 'info')
+        log_func(f'🔍 Detection source: "{detection_name[:80]}"', 'info')
+        log_func(f'🔍 Detected category: {category} → {detected}', 'info')
         
         folder_name = category_map.get(detected.lower(), detected)
         remote_path = f"{media_path}/{folder_name}"
