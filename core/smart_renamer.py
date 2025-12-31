@@ -770,9 +770,23 @@ class SmartRenamer:
         # Execute rename
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Store original parent folder for cleanup
+            original_parent = file_path.parent
+            
             shutil.move(str(file_path), str(target_path))
             
             logger.info(f"Renamed: {file_path.name} -> {new_name}")
+            
+            # Clean up empty original folder if it's different from target and base_dir
+            if original_parent != target_path.parent and original_parent != base_dir:
+                try:
+                    # Only remove if empty
+                    if not any(original_parent.iterdir()):
+                        original_parent.rmdir()
+                        logger.info(f"Cleaned up empty folder: {original_parent.name}")
+                except Exception as e:
+                    logger.debug(f"Could not remove original folder: {e}")
             
             # Create .nfo file with IMDB URL for Plex matching (MOVIES ONLY)
             # TV shows use folder naming with {tvdb-xxx} or {tmdb-xxx} instead
