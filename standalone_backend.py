@@ -761,10 +761,20 @@ def transfer_to_nas_standalone(source_dir: str, nas_name: str, category: str, lo
     for media_file in media_files:
         file_name = media_file.name
         
+        # Try to get original filename from parent directory name (before smart rename)
+        # Original files are in folders like "www.1TamilMV.LC - Innocent (2025) Malayalam..."
+        original_folder_name = media_file.parent.name
+        
+        # Use original folder name for category detection (has language keywords)
+        # Fall back to renamed filename if needed
+        detection_name = original_folder_name if original_folder_name != source_path.name else file_name
+        
         # Smart detect category - pass metadata_found flag
         metadata_found = job_info.get('metadata_found', True)  # Default to True to avoid false Malayalam detection
-        detected = detect_content_type_standalone(file_name, category, log_func, filter_language, metadata_found)
+        detected = detect_content_type_standalone(detection_name, category, log_func, filter_language, metadata_found)
         job_info['detected_category'] = detected
+        
+        log_func(f'🔍 Detection source: {detection_name[:80]}...', 'info')
         
         folder_name = category_map.get(detected.lower(), detected)
         remote_path = f"{media_path}/{folder_name}"
