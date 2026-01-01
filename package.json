@@ -1,6 +1,6 @@
 {
   "name": "stellar-media-organizer",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "Stellar Media Organizer - Organize movies, series & music for Plex/Jellyfin with IMDB/MusicBrainz integration and GPU conversion",
   "scripts": {
     "dev": "concurrently -n GPU,API,WEB -c blue,green,magenta \"pnpm run gpu\" \"pnpm run api\" \"pnpm run web\"",

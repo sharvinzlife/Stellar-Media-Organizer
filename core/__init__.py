@@ -3,7 +3,9 @@ Core package for Media Organizer Pro
 Shared logic used by both CLI and API
 """
 # Lazy imports to avoid dependency issues
-__version__ = "6.1.0"
+import contextlib
+
+__version__ = "6.2.0"
 
 # Database (optional - requires sqlalchemy)
 def get_db():
@@ -30,76 +32,117 @@ def get_smart_renamer(**kwargs):
     return SmartRenamer(**kwargs)
 
 # Direct imports for commonly used items
-try:
-    from .imdb_client import lookup_series, IMDBSeriesInfo, IMDBEpisodeInfo
-except ImportError:
-    pass
+with contextlib.suppress(ImportError):
+    from .imdb_client import IMDBEpisodeInfo, IMDBSeriesInfo, lookup_series
 
-try:
+with contextlib.suppress(ImportError):
     from .tmdb_client import (
         TMDBClient,
-        TMDBSeriesInfo,
-        TMDBMovieInfo,
         TMDBEpisodeInfo,
         TMDBFilenameGenerator,
+        TMDBMovieInfo,
+        TMDBSeriesInfo,
     )
-except ImportError:
-    pass
 
-try:
-    from .smart_renamer import SmartRenamer, FilenameParser, MediaType, RenameResult
-except ImportError:
-    pass
+with contextlib.suppress(ImportError):
+    from .smart_renamer import FilenameParser, MediaType, RenameResult, SmartRenamer
 
 # Exceptions (always available)
 from .exceptions import (
-    MediaOrganizerError,
-    DirectoryNotFoundError,
-    FFmpegNotFoundError,
-    MKVToolNixNotFoundError,
-    VideoConversionError,
     AudioFilterError,
+    ConfigurationError,
+    DirectoryNotFoundError,
+    DiskSpaceError,
+    FFmpegNotFoundError,
     IMDBLookupError,
     InvalidFormatError,
-    ConfigurationError,
+    MediaOrganizerError,
+    MKVToolNixNotFoundError,
+    VideoConversionError,
+)
+from .exceptions import (
     PermissionError as MediaPermissionError,
-    DiskSpaceError,
+)
+
+# Constants (always available)
+from .constants import (
+    CATEGORY_DISPLAY_LABELS,
+    DEFAULT_CLEANUP_AGE_HOURS,
+    LHARMONY_CATEGORY_MAP,
+    MIN_DISK_SPACE_GB,
+    PLEX_LIBRARY_MAP,
+    STREAMWAVE_CATEGORY_MAP,
+    SUPPORTED_LANGUAGES,
+    VIDEO_EXTENSIONS,
+    get_download_base_dir,
+    get_nas_category_map,
+    get_plex_library_name,
 )
 
 __all__ = [
-    # Version
-    "__version__",
-    # Factory functions
-    "get_db",
-    "get_database_manager",
-    "get_imdb_lookup",
-    "get_tmdb_client",
-    "get_smart_renamer",
+    "AudioFilterError",
+    "ConfigurationError",
+    "DirectoryNotFoundError",
+    "DiskSpaceError",
+    "FFmpegNotFoundError",
+    "FilenameParser",
+    "IMDBEpisodeInfo",
+    "IMDBLookupError",
     # IMDB
     "IMDBSeriesInfo",
-    "IMDBEpisodeInfo",
-    "lookup_series",
-    # TMDB
-    "TMDBClient",
-    "TMDBSeriesInfo",
-    "TMDBMovieInfo",
-    "TMDBEpisodeInfo",
-    "TMDBFilenameGenerator",
-    # Smart Renamer
-    "SmartRenamer",
-    "FilenameParser",
-    "MediaType",
-    "RenameResult",
+    "InvalidFormatError",
+    "MKVToolNixNotFoundError",
     # Exceptions
     "MediaOrganizerError",
-    "DirectoryNotFoundError",
-    "FFmpegNotFoundError",
-    "MKVToolNixNotFoundError",
-    "VideoConversionError",
-    "AudioFilterError",
-    "IMDBLookupError",
-    "InvalidFormatError",
-    "ConfigurationError",
     "MediaPermissionError",
-    "DiskSpaceError",
+    "MediaType",
+    "RenameResult",
+    # Smart Renamer
+    "SmartRenamer",
+    # TMDB
+    "TMDBClient",
+    "TMDBEpisodeInfo",
+    "TMDBFilenameGenerator",
+    "TMDBMovieInfo",
+    "TMDBSeriesInfo",
+    "VideoConversionError",
+    # Version
+    "__version__",
+    "get_database_manager",
+    # Factory functions
+    "get_db",
+    "get_imdb_lookup",
+    "get_smart_renamer",
+    "get_tmdb_client",
+    "lookup_series",
+    # Language utilities
+    "LANGUAGE_KEYWORDS",
+    "detect_language_from_filename",
+    "detect_language_from_mkv",
+    "get_category_for_language",
+    "is_tv_content",
+    "normalize_language",
+    # Constants
+    "CATEGORY_DISPLAY_LABELS",
+    "DEFAULT_CLEANUP_AGE_HOURS",
+    "LHARMONY_CATEGORY_MAP",
+    "MIN_DISK_SPACE_GB",
+    "PLEX_LIBRARY_MAP",
+    "STREAMWAVE_CATEGORY_MAP",
+    "SUPPORTED_LANGUAGES",
+    "VIDEO_EXTENSIONS",
+    "get_download_base_dir",
+    "get_nas_category_map",
+    "get_plex_library_name",
 ]
+
+# Language utilities
+with contextlib.suppress(ImportError):
+    from .language_utils import (
+        LANGUAGE_KEYWORDS,
+        detect_language_from_filename,
+        detect_language_from_mkv,
+        get_category_for_language,
+        is_tv_content,
+        normalize_language,
+    )

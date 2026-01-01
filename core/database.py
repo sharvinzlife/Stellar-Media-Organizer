@@ -2,14 +2,15 @@
 Database models and session management for job history tracking
 Uses SQLite for lightweight, cross-platform persistence
 """
+from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Enum as SQLEnum
+
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, create_engine
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from contextlib import contextmanager
+from sqlalchemy.orm import Session, sessionmaker
 
 Base = declarative_base()
 
@@ -34,27 +35,27 @@ class JobType(str, Enum):
 class Job(Base):
     """Job history table"""
     __tablename__ = "jobs"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     job_type = Column(SQLEnum(JobType), nullable=False)
     status = Column(SQLEnum(JobStatus), nullable=False, default=JobStatus.PENDING)
-    
+
     # File information
     input_path = Column(String(500), nullable=False)
     output_path = Column(String(500), nullable=True)
     filename = Column(String(255), nullable=True)
-    
+
     # Processing details
     language = Column(String(50), nullable=True)  # For audio filtering
     volume_boost = Column(Float, nullable=True)
     conversion_preset = Column(String(50), nullable=True)
-    
+
     # Progress tracking
     progress = Column(Float, default=0.0)  # 0.0 to 100.0
     current_file = Column(String(255), nullable=True)
     total_files = Column(Integer, default=0)
     processed_files = Column(Integer, default=0)
-    
+
     # Enhanced progress tracking
     phase = Column(String(50), default="pending")  # pending, downloading, filtering, organizing, uploading, scanning, completed
     renamed_files = Column(Integer, default=0)
@@ -64,27 +65,27 @@ class Job(Base):
     metadata_found = Column(String(10), default="unknown")  # yes, no, unknown
     plex_scan_status = Column(String(50), nullable=True)  # pending, scanning, completed, failed
     plex_library_name = Column(String(100), nullable=True)  # Library being scanned
-    
+
     # Size information (in bytes)
     input_size = Column(Integer, nullable=True)
     output_size = Column(Integer, nullable=True)
-    
+
     # Timing
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    
+
     # Error information
     error_message = Column(Text, nullable=True)
     error_details = Column(Text, nullable=True)
-    
+
     # Metadata
     user_agent = Column(String(255), nullable=True)
     ip_address = Column(String(45), nullable=True)
-    
+
     def __repr__(self):
         return f"<Job(id={self.id}, type={self.job_type}, status={self.status})>"
-    
+
     def to_dict(self):
         """Convert job to dictionary"""
         return {
@@ -119,42 +120,42 @@ class Job(Base):
             "error_message": self.error_message,
             "error_details": self.error_details,
         }
-    
-    def _calculate_duration(self) -> Optional[float]:
+
+    def _calculate_duration(self) -> float | None:
         """Calculate job duration in seconds"""
         if self.started_at and self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
-        elif self.started_at:
+        if self.started_at:
             return (datetime.utcnow() - self.started_at).total_seconds()
         return None
 
 
 class DatabaseManager:
     """Database manager for job history"""
-    
+
     def __init__(self, db_path: str = "media_organizer.db"):
         """Initialize database manager"""
         self.db_path = Path(db_path)
         self.engine = create_engine(f"sqlite:///{self.db_path}", echo=False)
         self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
-        
+
         # Create tables if they don't exist
         Base.metadata.create_all(self.engine)
-        
+
         # Run migrations for new columns
         self._migrate_schema()
-    
+
     def _migrate_schema(self):
         """Add new columns to existing tables if they don't exist."""
         import sqlite3
-        
+
         conn = sqlite3.connect(str(self.db_path))
         cursor = conn.cursor()
-        
+
         # Get existing columns
         cursor.execute("PRAGMA table_info(jobs)")
         existing_columns = {row[1] for row in cursor.fetchall()}
-        
+
         # New columns to add
         new_columns = [
             ("phase", "VARCHAR(50) DEFAULT 'pending'"),
@@ -166,7 +167,7 @@ class DatabaseManager:
             ("plex_scan_status", "VARCHAR(50)"),
             ("plex_library_name", "VARCHAR(100)"),
         ]
-        
+
         for col_name, col_type in new_columns:
             if col_name not in existing_columns:
                 try:
@@ -174,10 +175,10 @@ class DatabaseManager:
                     print(f"Added column: {col_name}")
                 except sqlite3.OperationalError:
                     pass  # Column might already exist
-        
+
         conn.commit()
         conn.close()
-    
+
     @contextmanager
     def get_session(self) -> Session:
         """Get database session context manager"""
@@ -190,16 +191,16 @@ class DatabaseManager:
             raise
         finally:
             session.close()
-    
+
     def create_job(
         self,
         job_type: JobType,
         input_path: str,
-        output_path: Optional[str] = None,
-        filename: Optional[str] = None,
-        language: Optional[str] = None,
-        volume_boost: Optional[float] = None,
-        conversion_preset: Optional[str] = None,
+        output_path: str | None = None,
+        filename: str | None = None,
+        language: str | None = None,
+        volume_boost: float | None = None,
+        conversion_preset: str | None = None,
     ) -> Job:
         """Create a new job"""
         with self.get_session() as session:
@@ -216,52 +217,50 @@ class DatabaseManager:
             session.add(job)
             session.flush()
             session.refresh(job)
-            
+
             # Make sure all attributes are loaded before session closes
-            job_id = job.id
-            job_status = job.status
-            
+
             return job
-    
-    def get_job(self, job_id: int) -> Optional[Job]:
+
+    def get_job(self, job_id: int) -> Job | None:
         """Get job by ID"""
         with self.get_session() as session:
             return session.query(Job).filter(Job.id == job_id).first()
-    
+
     def update_job_status(
         self,
         job_id: int,
         status: JobStatus,
-        error_message: Optional[str] = None,
-        error_details: Optional[str] = None,
-    ) -> Optional[Job]:
+        error_message: str | None = None,
+        error_details: str | None = None,
+    ) -> Job | None:
         """Update job status"""
         with self.get_session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
             if job:
                 job.status = status
-                
+
                 if status == JobStatus.IN_PROGRESS and not job.started_at:
                     job.started_at = datetime.utcnow()
                 elif status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]:
                     job.completed_at = datetime.utcnow()
-                
+
                 if error_message:
                     job.error_message = error_message
                 if error_details:
                     job.error_details = error_details
-                
+
                 session.commit()
                 session.refresh(job)
             return job
-    
+
     def update_job_progress(
         self,
         job_id: int,
         progress: float,
-        current_file: Optional[str] = None,
-        processed_files: Optional[int] = None,
-    ) -> Optional[Job]:
+        current_file: str | None = None,
+        processed_files: int | None = None,
+    ) -> Job | None:
         """Update job progress"""
         with self.get_session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
@@ -274,19 +273,19 @@ class DatabaseManager:
                 session.commit()
                 session.refresh(job)
             return job
-    
+
     def update_job_phase(
         self,
         job_id: int,
         phase: str,
-        nas_destination: Optional[str] = None,
-        detected_category: Optional[str] = None,
-        renamed_files: Optional[int] = None,
-        filtered_files: Optional[int] = None,
-        metadata_found: Optional[str] = None,
-        plex_scan_status: Optional[str] = None,
-        plex_library_name: Optional[str] = None,
-    ) -> Optional[Job]:
+        nas_destination: str | None = None,
+        detected_category: str | None = None,
+        renamed_files: int | None = None,
+        filtered_files: int | None = None,
+        metadata_found: str | None = None,
+        plex_scan_status: str | None = None,
+        plex_library_name: str | None = None,
+    ) -> Job | None:
         """Update job phase and enhanced tracking fields"""
         with self.get_session() as session:
             job = session.query(Job).filter(Job.id == job_id).first()
@@ -309,36 +308,36 @@ class DatabaseManager:
                 session.commit()
                 session.refresh(job)
             return job
-    
+
     def get_all_jobs(
         self,
-        status: Optional[JobStatus] = None,
-        job_type: Optional[JobType] = None,
+        status: JobStatus | None = None,
+        job_type: JobType | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Job]:
+    ) -> list[Job]:
         """Get all jobs with optional filtering"""
         with self.get_session() as session:
             query = session.query(Job)
-            
+
             if status:
                 query = query.filter(Job.status == status)
             if job_type:
                 query = query.filter(Job.job_type == job_type)
-            
+
             query = query.order_by(Job.created_at.desc())
             query = query.limit(limit).offset(offset)
-            
+
             return query.all()
-    
-    def get_active_jobs(self) -> List[Job]:
+
+    def get_active_jobs(self) -> list[Job]:
         """Get all active (in-progress) jobs"""
         return self.get_all_jobs(status=JobStatus.IN_PROGRESS)
-    
-    def get_recent_jobs(self, limit: int = 20) -> List[Job]:
+
+    def get_recent_jobs(self, limit: int = 20) -> list[Job]:
         """Get recent jobs"""
         return self.get_all_jobs(limit=limit)
-    
+
     def get_job_stats(self) -> dict:
         """Get job statistics"""
         with self.get_session() as session:
@@ -346,7 +345,7 @@ class DatabaseManager:
             completed = session.query(Job).filter(Job.status == JobStatus.COMPLETED).count()
             failed = session.query(Job).filter(Job.status == JobStatus.FAILED).count()
             in_progress = session.query(Job).filter(Job.status == JobStatus.IN_PROGRESS).count()
-            
+
             return {
                 "total": total,
                 "completed": completed,
@@ -355,7 +354,7 @@ class DatabaseManager:
                 "pending": total - completed - failed - in_progress,
                 "success_rate": (completed / total * 100) if total > 0 else 0,
             }
-    
+
     def delete_old_jobs(self, days: int = 30) -> int:
         """Delete jobs older than specified days"""
         with self.get_session() as session:
@@ -366,7 +365,7 @@ class DatabaseManager:
 
 
 # Singleton instance
-_db_manager: Optional[DatabaseManager] = None
+_db_manager: DatabaseManager | None = None
 
 
 def get_db() -> DatabaseManager:

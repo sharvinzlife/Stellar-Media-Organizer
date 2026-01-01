@@ -4,19 +4,19 @@ Configuration Management for Media Organizer Pro
 Uses pydantic-settings for type-safe configuration with environment variable support
 """
 from pathlib import Path
-from typing import Optional, List, Dict
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, validator
 
 
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
-    
+
     # ========== Application Info ==========
     app_name: str = Field(default="Media Organizer Pro", description="Application name")
-    app_version: str = Field(default="3.1.0", description="Application version")
+    app_version: str = Field(default="6.1.0", description="Application version")
     debug: bool = Field(default=False, description="Enable debug mode")
-    
+
     # ========== Paths ==========
     media_path: Path = Field(
         default_factory=lambda: Path.home() / "Documents" / "Processed",
@@ -34,12 +34,12 @@ class Settings(BaseSettings):
         default=Path("output"),
         description="Output directory for converted files"
     )
-    
+
     # ========== API Settings ==========
     api_host: str = Field(default="0.0.0.0", description="API host")
     api_port: int = Field(default=8000, description="API port")
     api_prefix: str = Field(default="/api/v1", description="API URL prefix")
-    cors_origins: List[str] = Field(
+    cors_origins: list[str] = Field(
         default=[
             "http://localhost",
             "http://localhost:80",
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
         ],
         description="Allowed CORS origins"
     )
-    
+
     # ========== GPU/Conversion Settings ==========
     gpu_service_url: str = Field(
         default="http://localhost:8888",
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
         default="hevc_best",
         description="Default video conversion preset"
     )
-    
+
     # ========== IMDB/OMDb Settings ==========
     omdb_api_key: str = Field(
         default="8800e3b1",
@@ -80,13 +80,13 @@ class Settings(BaseSettings):
         default=True,
         description="Enable IMDB lookup caching"
     )
-    
+
     # ========== TMDB Settings ==========
-    tmdb_access_token: Optional[str] = Field(
+    tmdb_access_token: str | None = Field(
         default=None,
         description="TMDB Read Access Token (Bearer auth, for episode titles)"
     )
-    tmdb_api_key: Optional[str] = Field(
+    tmdb_api_key: str | None = Field(
         default=None,
         description="TMDB API key (v3 auth)"
     )
@@ -94,36 +94,36 @@ class Settings(BaseSettings):
         default=True,
         description="Enable TMDB lookups for metadata"
     )
-    
+
     # ========== SMB/NAS Settings ==========
     # Lharmony (Synology)
-    lharmony_host: Optional[str] = Field(default=None, description="Lharmony NAS host")
-    lharmony_username: Optional[str] = Field(default=None, description="Lharmony username")
-    lharmony_password: Optional[str] = Field(default=None, description="Lharmony password")
+    lharmony_host: str | None = Field(default=None, description="Lharmony NAS host")
+    lharmony_username: str | None = Field(default=None, description="Lharmony username")
+    lharmony_password: str | None = Field(default=None, description="Lharmony password")
     lharmony_share: str = Field(default="data", description="Lharmony share name")
     lharmony_media_path: str = Field(default="/media", description="Lharmony media path")
-    
+
     # Streamwave (Unraid)
-    streamwave_host: Optional[str] = Field(default=None, description="Streamwave NAS host")
-    streamwave_username: Optional[str] = Field(default=None, description="Streamwave username")
-    streamwave_password: Optional[str] = Field(default=None, description="Streamwave password")
+    streamwave_host: str | None = Field(default=None, description="Streamwave NAS host")
+    streamwave_username: str | None = Field(default=None, description="Streamwave username")
+    streamwave_password: str | None = Field(default=None, description="Streamwave password")
     streamwave_share: str = Field(default="Data-Streamwave", description="Streamwave share name")
     streamwave_media_path: str = Field(default="/media", description="Streamwave media path")
-    
+
     # ========== Plex Media Server Settings ==========
     plex_enabled: bool = Field(
         default=False,
         description="Enable Plex integration"
     )
-    plex_server_url: Optional[str] = Field(
+    plex_server_url: str | None = Field(
         default=None,
         description="Plex server URL (e.g., http://192.168.1.100:32400)"
     )
-    plex_token: Optional[str] = Field(
+    plex_token: str | None = Field(
         default=None,
         description="Plex authentication token"
     )
-    plex_external_url: Optional[str] = Field(
+    plex_external_url: str | None = Field(
         default=None,
         description="External Plex URL (e.g., Cloudflare tunnel)"
     )
@@ -135,10 +135,10 @@ class Settings(BaseSettings):
         default=True,
         description="Automatically match metadata with IMDB after scan"
     )
-    
+
     # Plex Library Mappings (NAS folder -> Plex library name)
     # These map the NAS destination folders to Plex library names for auto-scanning
-    plex_library_map: Dict[str, str] = Field(
+    plex_library_map: dict[str, str] = Field(
         default={
             'movies': 'Movies',
             'malayalam movies': 'Malayalam Movies',
@@ -150,33 +150,33 @@ class Settings(BaseSettings):
         },
         description="Mapping of NAS folders to Plex library names"
     )
-    
+
     # ========== Tautulli Settings ==========
     tautulli_enabled: bool = Field(
         default=False,
         description="Enable Tautulli integration"
     )
-    tautulli_url: Optional[str] = Field(
+    tautulli_url: str | None = Field(
         default=None,
         description="Tautulli server URL (e.g., http://192.168.1.100:8181)"
     )
-    tautulli_api_key: Optional[str] = Field(
+    tautulli_api_key: str | None = Field(
         default=None,
         description="Tautulli API key"
     )
-    
+
     # ========== AllDebrid Settings ==========
-    alldebrid_api_key: Optional[str] = Field(
+    alldebrid_api_key: str | None = Field(
         default=None,
         description="AllDebrid API key for downloading"
     )
-    
+
     # ========== Processing Settings ==========
     max_upload_size: int = Field(
         default=10 * 1024 * 1024 * 1024,  # 10GB
         description="Maximum upload file size in bytes"
     )
-    allowed_extensions: List[str] = Field(
+    allowed_extensions: list[str] = Field(
         default=[".mkv", ".mp4", ".avi", ".mov"],
         description="Allowed video file extensions"
     )
@@ -190,27 +190,27 @@ class Settings(BaseSettings):
         le=3.0,
         description="Default volume boost multiplier"
     )
-    
+
     # ========== External Tools ==========
-    mkvmerge_path: Optional[str] = Field(
+    mkvmerge_path: str | None = Field(
         default=None,
         description="Path to mkvmerge binary (auto-detected if None)"
     )
-    ffmpeg_path: Optional[str] = Field(
+    ffmpeg_path: str | None = Field(
         default=None,
         description="Path to ffmpeg binary (auto-detected if None)"
     )
-    
+
     # ========== Logging Settings ==========
     log_level: str = Field(
         default="INFO",
         description="Logging level (DEBUG, INFO, WARNING, ERROR)"
     )
-    log_file: Optional[Path] = Field(
+    log_file: Path | None = Field(
         default=None,
         description="Log file path (None for stdout only)"
     )
-    
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -218,26 +218,29 @@ class Settings(BaseSettings):
         env_prefix="MEDIA_ORG_",  # Environment variables: MEDIA_ORG_API_PORT, etc.
         extra="ignore"  # Ignore extra fields in .env
     )
-    
-    @validator("media_path", "upload_dir", "temp_dir", "output_dir")
+
+    @field_validator("media_path", "upload_dir", "temp_dir", "output_dir", mode="before")
+    @classmethod
     def expand_path(cls, v):
         """Expand user home directory and resolve paths"""
         if isinstance(v, str):
             v = Path(v)
-        return v.expanduser().resolve()
-    
+        if isinstance(v, Path):
+            return v.expanduser().resolve()
+        return v
+
     def create_directories(self):
         """Create necessary directories if they don't exist"""
         for dir_path in [self.upload_dir, self.temp_dir, self.output_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
-    
+
     def to_dict(self) -> dict:
         """Convert settings to dictionary"""
         return self.model_dump()
 
 
 # Singleton instance
-_settings: Optional[Settings] = None
+_settings: Settings | None = None
 
 
 def get_settings() -> Settings:
@@ -264,15 +267,15 @@ settings = get_settings()
 if __name__ == "__main__":
     # Test configuration
     import json
-    
+
     print("Media Organizer Pro - Configuration")
     print("=" * 50)
     config = get_settings()
-    
+
     # Pretty print configuration
     config_dict = config.to_dict()
     print(json.dumps(config_dict, indent=2, default=str))
-    
+
     print("\n" + "=" * 50)
     print("✅ Configuration loaded successfully!")
     print(f"📁 Media path: {config.media_path}")

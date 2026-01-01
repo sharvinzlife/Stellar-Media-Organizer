@@ -5,17 +5,17 @@ Supports: AllDebrid, YouTube Music (yt-dlp), Spotify (spotdl)
 Auto-updates yt-dlp and spotdl on startup and every 6 hours
 """
 
+import logging
 import os
 import re
 import subprocess
-import logging
+import sys
 import threading
-import time
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
 from datetime import datetime, timedelta
+from enum import Enum
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -34,17 +34,17 @@ class DownloadResult:
     """Result of a download operation"""
     success: bool
     source: DownloadSource
-    files: List[str]
+    files: list[str]
     message: str
-    errors: List[str]
+    errors: list[str]
 
 
 class ToolUpdater:
     """Manages auto-updates for yt-dlp and spotdl"""
-    
+
     _instance = None
     _lock = threading.Lock()
-    
+
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
@@ -52,7 +52,7 @@ class ToolUpdater:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
@@ -61,23 +61,23 @@ class ToolUpdater:
         self.update_interval = timedelta(hours=6)
         self._update_thread = None
         self._stop_event = threading.Event()
-    
-    def check_and_update(self, force: bool = False) -> Dict[str, bool]:
+
+    def check_and_update(self, force: bool = False) -> dict[str, bool]:
         """Check and update tools if needed"""
         results = {"yt-dlp": False, "spotdl": False}
-        
+
         now = datetime.now()
         if not force and self.last_update and (now - self.last_update) < self.update_interval:
             logger.info("Tools recently updated, skipping...")
             return results
-        
+
         logger.info("🔄 Checking for tool updates...")
-        
+
         # Update yt-dlp
         try:
             result = subprocess.run(
                 ['pip', 'install', '--upgrade', 'yt-dlp'],
-                capture_output=True, text=True, timeout=120
+                check=False, capture_output=True, text=True, timeout=120
             )
             if result.returncode == 0:
                 results["yt-dlp"] = True
@@ -86,12 +86,12 @@ class ToolUpdater:
                 logger.warning(f"⚠️ yt-dlp update failed: {result.stderr}")
         except Exception as e:
             logger.error(f"❌ yt-dlp update error: {e}")
-        
+
         # Update spotdl
         try:
             result = subprocess.run(
                 ['pip', 'install', '--upgrade', 'spotdl'],
-                capture_output=True, text=True, timeout=120
+                check=False, capture_output=True, text=True, timeout=120
             )
             if result.returncode == 0:
                 results["spotdl"] = True
@@ -100,31 +100,31 @@ class ToolUpdater:
                 logger.warning(f"⚠️ spotdl update failed: {result.stderr}")
         except Exception as e:
             logger.error(f"❌ spotdl update error: {e}")
-        
+
         self.last_update = now
         return results
-    
+
     def start_auto_update(self):
         """Start background auto-update thread"""
         if self._update_thread and self._update_thread.is_alive():
             return
-        
+
         self._stop_event.clear()
         self._update_thread = threading.Thread(target=self._auto_update_loop, daemon=True)
         self._update_thread.start()
         logger.info("🔄 Auto-update thread started (every 6 hours)")
-    
+
     def stop_auto_update(self):
         """Stop background auto-update thread"""
         self._stop_event.set()
         if self._update_thread:
             self._update_thread.join(timeout=5)
-    
+
     def _auto_update_loop(self):
         """Background loop for auto-updates"""
         # Initial update on start
         self.check_and_update(force=True)
-        
+
         while not self._stop_event.is_set():
             # Wait for 6 hours or until stopped
             self._stop_event.wait(timeout=6 * 60 * 60)
@@ -134,7 +134,7 @@ class ToolUpdater:
 
 class MusicDownloader:
     """Multi-source music downloader"""
-    
+
     # URL patterns for auto-detection
     YOUTUBE_PATTERNS = [
         r'youtube\.com/watch',
@@ -143,7 +143,7 @@ class MusicDownloader:
         r'music\.youtube\.com/watch',
         r'music\.youtube\.com/playlist',
     ]
-    
+
     SPOTIFY_PATTERNS = [
         r'open\.spotify\.com/track',
         r'open\.spotify\.com/album',
@@ -152,28 +152,28 @@ class MusicDownloader:
         r'spotify\.com/album',
         r'spotify\.com/playlist',
     ]
-    
+
     ALLDEBRID_PATTERNS = [
         r'alldebrid\.com/f/',
     ]
-    
+
     def __init__(
         self,
         output_dir: str = "",
         alldebrid_api_key: str = "",
-        progress_callback: Optional[Callable[[str, str], None]] = None
+        progress_callback: Callable[[str, str], None] | None = None
     ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.alldebrid_api_key = alldebrid_api_key or os.getenv('ALLDEBRID_API_KEY', '')
         self.progress_callback = progress_callback or (lambda msg, level: None)
-        
+
         # Initialize tool updater
         self.updater = ToolUpdater()
-        
+
         # Check tools availability
         self._check_tools()
-    
+
     def _log(self, message: str, level: str = "info"):
         """Log message and call progress callback"""
         if level == "error":
@@ -183,31 +183,31 @@ class MusicDownloader:
         else:
             logger.info(message)
         self.progress_callback(message, level)
-    
-    def _get_venv_bin_paths(self) -> List[Path]:
+
+    def _get_venv_bin_paths(self) -> list[Path]:
         """Get possible paths to virtual environment bin directories"""
         import sys
         paths = []
-        
+
         # 1. Current Python executable's directory (if running in venv)
         python_path = Path(sys.executable)
         paths.append(python_path.parent)
-        
+
         # 2. Project's .venv directory (relative to this file)
         project_root = Path(__file__).parent
         venv_bin = project_root / '.venv' / 'bin'
         if venv_bin.exists():
             paths.append(venv_bin)
-        
+
         # 3. Check VIRTUAL_ENV environment variable
         virtual_env = os.environ.get('VIRTUAL_ENV')
         if virtual_env:
             venv_path = Path(virtual_env) / 'bin'
             if venv_path.exists():
                 paths.append(venv_path)
-        
+
         return paths
-    
+
     def _check_tools(self):
         """Check if required tools are installed"""
         self.tools_available = {
@@ -215,10 +215,10 @@ class MusicDownloader:
             "spotdl": False,
             "ffmpeg": False,
         }
-        
+
         # Get all possible venv bin paths
         venv_bins = self._get_venv_bin_paths()
-        
+
         # Build list of paths to check for each tool
         yt_dlp_paths = []
         spotdl_paths = []
@@ -228,13 +228,13 @@ class MusicDownloader:
         # Add system PATH as fallback
         yt_dlp_paths.append(Path('yt-dlp'))
         spotdl_paths.append(Path('spotdl'))
-        
+
         # Check yt-dlp
         for yt_dlp_path in yt_dlp_paths:
             try:
-                result = subprocess.run(
-                    [str(yt_dlp_path), '--version'], 
-                    capture_output=True, 
+                subprocess.run(
+                    [str(yt_dlp_path), '--version'],
+                    capture_output=True,
                     check=True,
                     timeout=10
                 )
@@ -244,17 +244,17 @@ class MusicDownloader:
                 break
             except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                 continue
-        
+
         if not self.tools_available["yt-dlp"]:
             self._log("⚠️ yt-dlp not found. Install with: uv pip install yt-dlp", "warning")
             self._yt_dlp_path = 'yt-dlp'
-        
+
         # Check spotdl
         for spotdl_path in spotdl_paths:
             try:
-                result = subprocess.run(
-                    [str(spotdl_path), '--version'], 
-                    capture_output=True, 
+                subprocess.run(
+                    [str(spotdl_path), '--version'],
+                    capture_output=True,
                     check=True,
                     timeout=10
                 )
@@ -264,79 +264,79 @@ class MusicDownloader:
                 break
             except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
                 continue
-        
+
         if not self.tools_available["spotdl"]:
             self._log("⚠️ spotdl not found. Install with: uv pip install spotdl", "warning")
             self._spotdl_path = 'spotdl'
-        
+
         # Check ffmpeg (system tool)
         try:
             subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True, timeout=10)
             self.tools_available["ffmpeg"] = True
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             self._log("⚠️ ffmpeg not found. Install with: brew install ffmpeg", "warning")
-    
+
     def detect_source(self, url: str) -> DownloadSource:
         """Auto-detect download source from URL"""
         url_lower = url.lower()
-        
+
         for pattern in self.YOUTUBE_PATTERNS:
             if re.search(pattern, url_lower):
                 return DownloadSource.YOUTUBE_MUSIC
-        
+
         for pattern in self.SPOTIFY_PATTERNS:
             if re.search(pattern, url_lower):
                 return DownloadSource.SPOTIFY
-        
+
         for pattern in self.ALLDEBRID_PATTERNS:
             if re.search(pattern, url_lower):
                 return DownloadSource.ALLDEBRID
-        
+
         return DownloadSource.AUTO
-    
+
     def start_auto_updates(self):
         """Start automatic tool updates"""
         self.updater.start_auto_update()
-    
-    def update_tools(self) -> Dict[str, bool]:
+
+    def update_tools(self) -> dict[str, bool]:
         """Manually trigger tool updates"""
         return self.updater.check_and_update(force=True)
-    
+
     def download(
         self,
-        urls: List[str],
+        urls: list[str],
         source: DownloadSource = DownloadSource.AUTO,
         audio_format: str = "flac",
         audio_quality: str = "0",  # Best quality
     ) -> DownloadResult:
         """
         Download music from URLs
-        
+
         Args:
             urls: List of URLs to download
             source: Download source (auto-detect if AUTO)
             audio_format: Output format (flac, mp3, m4a)
             audio_quality: Quality setting
-        
+
         Returns:
             DownloadResult with status and file list
         """
         if not urls:
             return DownloadResult(False, source, [], "No URLs provided", [])
-        
+
         # Group URLs by source
         grouped = self._group_urls_by_source(urls, source)
-        
+
         all_files = []
         all_errors = []
-        
+
         # Process each source
         for src, src_urls in grouped.items():
             if not src_urls:
                 continue
-            
+
             self._log(f"📥 Processing {len(src_urls)} {src.value} URLs...")
-            
+
             if src == DownloadSource.YOUTUBE_MUSIC:
                 result = self._download_youtube(src_urls, audio_format, audio_quality)
             elif src == DownloadSource.SPOTIFY:
@@ -346,13 +346,13 @@ class MusicDownloader:
             else:
                 all_errors.append(f"Unknown source for URLs: {src_urls}")
                 continue
-            
+
             all_files.extend(result.files)
             all_errors.extend(result.errors)
-        
+
         success = len(all_files) > 0
         message = f"Downloaded {len(all_files)} files" if success else "No files downloaded"
-        
+
         return DownloadResult(
             success=success,
             source=source,
@@ -360,19 +360,19 @@ class MusicDownloader:
             message=message,
             errors=all_errors
         )
-    
+
     def _group_urls_by_source(
         self,
-        urls: List[str],
+        urls: list[str],
         default_source: DownloadSource
-    ) -> Dict[DownloadSource, List[str]]:
+    ) -> dict[DownloadSource, list[str]]:
         """Group URLs by their detected source"""
         grouped = {
             DownloadSource.YOUTUBE_MUSIC: [],
             DownloadSource.SPOTIFY: [],
             DownloadSource.ALLDEBRID: [],
         }
-        
+
         for url in urls:
             if default_source != DownloadSource.AUTO:
                 grouped[default_source].append(url)
@@ -382,33 +382,33 @@ class MusicDownloader:
                     grouped[detected].append(url)
                 else:
                     self._log(f"⚠️ Could not detect source for: {url}", "warning")
-        
+
         return grouped
-    
+
     def _download_youtube(
         self,
-        urls: List[str],
+        urls: list[str],
         audio_format: str = "flac",
         audio_quality: str = "0"
     ) -> DownloadResult:
         """Download from YouTube/YouTube Music using yt-dlp"""
         if not self.tools_available["yt-dlp"]:
-            return DownloadResult(False, DownloadSource.YOUTUBE_MUSIC, [], 
+            return DownloadResult(False, DownloadSource.YOUTUBE_MUSIC, [],
                                 "yt-dlp not installed", ["Install with: pip install yt-dlp"])
-        
+
         files = []
         errors = []
-        
+
         # Log the output directory being used
         self._log(f"📂 Output directory: {self.output_dir}")
-        
+
         for url in urls:
             self._log(f"🎵 Downloading from YouTube: {url[:60]}...")
-            
+
             # Check if it's a playlist URL
             is_playlist = 'list=' in url or 'playlist' in url.lower()
             self._log(f"   Is playlist: {is_playlist}")
-            
+
             if is_playlist:
                 # For playlists: ALL tracks go in ONE folder named after the playlist
                 # Format: PlaylistName/001 - Artist - Title.ext
@@ -416,23 +416,23 @@ class MusicDownloader:
             else:
                 # For single videos: just Artist - Title
                 output_template = str(self.output_dir / "%(artist,channel,uploader|Unknown)s - %(title)s.%(ext)s")
-            
+
             self._log(f"   Output template: {output_template}")
-            
+
             # Build yt-dlp command (use venv path if available)
             cmd = [self._yt_dlp_path, '--extract-audio']
-            
+
             # Audio format (skip if 'original' to keep best quality)
             if audio_format != 'original':
                 cmd.extend(['--audio-format', audio_format])
-            
+
             cmd.extend([
                 '--audio-quality', audio_quality,
                 '--embed-thumbnail',
                 '--embed-metadata',
                 '--add-metadata',
             ])
-            
+
             # Playlist-specific options
             if is_playlist:
                 cmd.extend([
@@ -444,16 +444,16 @@ class MusicDownloader:
                 ])
             else:
                 cmd.append('--no-playlist')
-            
+
             cmd.extend([
                 '--output', output_template,
                 '--progress',
                 '--newline',  # Better progress parsing
                 url
             ])
-            
+
             self._log(f"   Command: {' '.join(cmd[:10])}...")
-            
+
             try:
                 process = subprocess.Popen(
                     cmd,
@@ -462,15 +462,15 @@ class MusicDownloader:
                     text=True,
                     bufsize=1
                 )
-                
+
                 playlist_dir = None
                 downloaded_files = []
-                
+
                 for line in iter(process.stdout.readline, ''):
                     line = line.strip()
                     if not line:
                         continue
-                    
+
                     # Log progress
                     if '[download]' in line and '%' in line:
                         self._log(f"   {line}")
@@ -496,42 +496,42 @@ class MusicDownloader:
                                 playlist_dir = file_path.parent
                     elif 'error' in line.lower():
                         self._log(f"   ⚠️ {line}", "warning")
-                
+
                 process.wait()
-                
+
                 if process.returncode == 0:
                     self._log(f"✅ YouTube download complete: {url[:40]}...", "success")
-                    
+
                     # Handle playlist cover image - download separately
                     if is_playlist and playlist_dir and playlist_dir.exists():
                         self._log(f"   📁 Playlist folder: {playlist_dir}")
                         cover_path = playlist_dir / 'cover.jpg'
-                        
+
                         if not cover_path.exists():
                             # Try to download playlist thumbnail using yt-dlp
                             try:
-                                self._log(f"   🖼️ Fetching playlist cover...")
+                                self._log("   🖼️ Fetching playlist cover...")
                                 # Get playlist info to extract thumbnail URL
                                 info_cmd = [
                                     self._yt_dlp_path, '--flat-playlist', '--dump-single-json',
                                     '--no-download', url
                                 ]
-                                info_result = subprocess.run(info_cmd, capture_output=True, text=True, timeout=30)
+                                info_result = subprocess.run(info_cmd, check=False, capture_output=True, text=True, timeout=30)
                                 if info_result.returncode == 0:
                                     import json
                                     playlist_info = json.loads(info_result.stdout)
-                                    
+
                                     # Get thumbnail URL (try multiple fields)
                                     thumb_url = None
-                                    if 'thumbnails' in playlist_info and playlist_info['thumbnails']:
+                                    if playlist_info.get('thumbnails'):
                                         # Get highest quality thumbnail
-                                        thumbs = sorted(playlist_info['thumbnails'], 
-                                                       key=lambda x: x.get('width', 0) * x.get('height', 0), 
+                                        thumbs = sorted(playlist_info['thumbnails'],
+                                                       key=lambda x: x.get('width', 0) * x.get('height', 0),
                                                        reverse=True)
                                         thumb_url = thumbs[0].get('url')
                                     elif 'thumbnail' in playlist_info:
                                         thumb_url = playlist_info['thumbnail']
-                                    
+
                                     if thumb_url:
                                         # Download the thumbnail
                                         import requests
@@ -539,25 +539,25 @@ class MusicDownloader:
                                         if response.status_code == 200:
                                             with open(cover_path, 'wb') as f:
                                                 f.write(response.content)
-                                            self._log(f"   🖼️ Saved playlist cover: cover.jpg", "success")
+                                            self._log("   🖼️ Saved playlist cover: cover.jpg", "success")
                                         else:
                                             self._log(f"   ⚠️ Could not download cover (HTTP {response.status_code})", "warning")
                                     else:
-                                        self._log(f"   ⚠️ No playlist thumbnail found", "warning")
+                                        self._log("   ⚠️ No playlist thumbnail found", "warning")
                             except Exception as e:
                                 self._log(f"   ⚠️ Could not fetch playlist cover: {e}", "warning")
-                    
+
                     files.extend(downloaded_files)
                 else:
                     error_msg = f"yt-dlp failed for {url} (exit code: {process.returncode})"
                     errors.append(error_msg)
                     self._log(f"❌ {error_msg}", "error")
-                    
+
             except Exception as e:
-                error_msg = f"YouTube download error: {str(e)}"
+                error_msg = f"YouTube download error: {e!s}"
                 errors.append(error_msg)
                 self._log(f"❌ {error_msg}", "error")
-        
+
         return DownloadResult(
             success=len(files) > 0,
             source=DownloadSource.YOUTUBE_MUSIC,
@@ -565,71 +565,71 @@ class MusicDownloader:
             message=f"Downloaded {len(files)} files from YouTube",
             errors=errors
         )
-    
+
     def _download_spotify(
         self,
-        urls: List[str],
+        urls: list[str],
         audio_format: str = "flac"
     ) -> DownloadResult:
         """Download from Spotify using spotdl (Python 3.12 venv)"""
         if not self.tools_available["spotdl"]:
             return DownloadResult(False, DownloadSource.SPOTIFY, [],
                                 "spotdl not installed", ["Install with: pip install spotdl"])
-        
+
         files = []
         errors = []
-        
+
         # spotdl output format - use playlist structure:
-        # {list-name} = playlist/album name  
+        # {list-name} = playlist/album name
         # {list-position} = position in playlist (1, 2, 3...)
         # {artists} = track artist(s)
         # {title} = track title
         # Result: "HITS 2025/1 - Billie Eilish - BIRDS OF A FEATHER.flac"
         output_format = "{list-name}/{list-position} - {artists} - {title}"
-        
+
         # Handle 'original' format - spotdl defaults to mp3, use flac for best quality
         actual_format = 'flac' if audio_format == 'original' else audio_format
-        
+
         # Use Python 3.12 venv for spotdl (asyncio compatibility)
         project_root = Path(__file__).parent
         spotdl_python = project_root / '.venv-spotdl' / 'bin' / 'python3'
-        
+
         if not spotdl_python.exists():
             return DownloadResult(
-                False, 
-                DownloadSource.SPOTIFY, 
+                False,
+                DownloadSource.SPOTIFY,
                 [],
                 "Python 3.12 venv for spotdl not found",
-                [f"Create venv with: uv venv .venv-spotdl --python 3.12 && uv pip install --python .venv-spotdl spotdl"]
+                ["Create venv with: uv venv .venv-spotdl --python 3.12 && uv pip install --python .venv-spotdl spotdl"]
             )
-        
+
         for url in urls:
             self._log(f"🎵 Downloading from Spotify: {url[:60]}...")
-            
+
             # Ensure output directory exists
             self.output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Detect if this is a playlist/album URL
             is_playlist = 'playlist' in url.lower() or 'album' in url.lower()
-            
+
             # Use Python 3.12 venv to run spotdl
             # spotdl --output expects: "/full/path/{template-vars}"
             # Build the full template path correctly
             output_template = f"{self.output_dir}/{output_format}"
-            
+
             cmd = [
                 str(spotdl_python), '-m', 'spotdl',
                 'download', url,
                 '--output', output_template,
                 '--format', actual_format,
             ]
-            
+
             self._log(f"   Using Python 3.12 venv: {spotdl_python}")
             self._log(f"   Output template: {output_template}")
-            
+
             playlist_folder = None
             downloaded_files = []
-            
+
             try:
                 process = subprocess.Popen(
                     cmd,
@@ -639,7 +639,7 @@ class MusicDownloader:
                     bufsize=1,
                     cwd=str(self.output_dir)
                 )
-                
+
                 for line in iter(process.stdout.readline, ''):
                     line = line.strip()
                     if line:
@@ -647,7 +647,7 @@ class MusicDownloader:
                         if 'Downloaded' in line or 'Skipping' in line:
                             files.append(line)
                             downloaded_files.append(line)
-                            
+
                             # Extract playlist folder from first downloaded file
                             if is_playlist and not playlist_folder:
                                 # Look for pattern: "Downloaded "Artist - Title": /path/to/Playlist Name/01 - Artist - Title.flac"
@@ -658,112 +658,112 @@ class MusicDownloader:
                                     if file_path.exists() and file_path.parent != self.output_dir:
                                         playlist_folder = file_path.parent
                                         self._log(f"   📁 Detected playlist folder: {playlist_folder.name}")
-                
+
                 process.wait()
-                
+
                 if process.returncode == 0:
                     self._log(f"✅ Spotify download complete: {url[:40]}...", "success")
-                    
+
                     # Extract cover image for playlists/albums
                     if is_playlist and playlist_folder and playlist_folder.exists():
                         self._extract_spotify_cover(url, playlist_folder)
                 else:
                     errors.append(f"spotdl failed for {url}")
-                    
+
             except Exception as e:
-                errors.append(f"Spotify download error: {str(e)}")
+                errors.append(f"Spotify download error: {e!s}")
                 self._log(f"❌ Error: {e}", "error")
-        
+
         return DownloadResult(
             success=len(errors) == 0,
             source=DownloadSource.SPOTIFY,
             files=files,
-            message=f"Downloaded from Spotify",
+            message="Downloaded from Spotify",
             errors=errors
         )
-    
+
     def _extract_spotify_cover(self, url: str, playlist_folder: Path):
         """Extract cover image for Spotify playlist/album"""
         try:
             cover_path = playlist_folder / 'cover.jpg'
-            
+
             # Check if cover already exists
             if cover_path.exists():
-                self._log(f"   🖼️ Cover already exists: cover.jpg")
+                self._log("   🖼️ Cover already exists: cover.jpg")
                 return
-            
-            self._log(f"   🖼️ Extracting cover image...")
-            
+
+            self._log("   🖼️ Extracting cover image...")
+
             # Method 1: Extract from embedded cover art in audio files
             audio_files = sorted(playlist_folder.glob('*.flac')) or sorted(playlist_folder.glob('*.mp3'))
-            
+
             if audio_files:
                 first_track = audio_files[0]
-                
+
                 # Try extracting with ffmpeg
                 try:
                     result = subprocess.run(
                         ['ffmpeg', '-i', str(first_track), '-an', '-vcodec', 'copy', str(cover_path), '-y'],
-                        capture_output=True,
+                        check=False, capture_output=True,
                         timeout=30
                     )
-                    
+
                     if result.returncode == 0 and cover_path.exists() and cover_path.stat().st_size > 0:
                         self._log(f"   🖼️ Saved cover: cover.jpg ({cover_path.stat().st_size} bytes)", "success")
                         return
                 except Exception as e:
                     self._log(f"   ⚠️ FFmpeg extraction failed: {e}", "warning")
-            
+
             # Method 2: Try using mutagen to extract cover
             try:
                 import mutagen
-                from mutagen.flac import FLAC, Picture
+                from mutagen.flac import FLAC
+                from mutagen.id3 import APIC
                 from mutagen.mp3 import MP3
-                from mutagen.id3 import ID3, APIC
-                
+
                 if audio_files:
                     audio = mutagen.File(str(audio_files[0]))
-                    
+
                     # FLAC files
                     if isinstance(audio, FLAC) and audio.pictures:
                         with open(cover_path, 'wb') as f:
                             f.write(audio.pictures[0].data)
-                        self._log(f"   🖼️ Saved cover from FLAC: cover.jpg", "success")
+                        self._log("   🖼️ Saved cover from FLAC: cover.jpg", "success")
                         return
-                    
+
                     # MP3 files
                     if isinstance(audio, MP3):
                         for tag in audio.tags.values():
                             if isinstance(tag, APIC):
                                 with open(cover_path, 'wb') as f:
                                     f.write(tag.data)
-                                self._log(f"   🖼️ Saved cover from MP3: cover.jpg", "success")
+                                self._log("   🖼️ Saved cover from MP3: cover.jpg", "success")
                                 return
             except Exception as e:
                 self._log(f"   ⚠️ Mutagen extraction failed: {e}", "warning")
-            
-            self._log(f"   ⚠️ Could not extract cover - no embedded art found", "warning")
-                
+
+            self._log("   ⚠️ Could not extract cover - no embedded art found", "warning")
+
         except Exception as e:
             self._log(f"   ⚠️ Cover extraction error: {e}", "warning")
-    
-    def _download_alldebrid(self, urls: List[str]) -> DownloadResult:
+
+    def _download_alldebrid(self, urls: list[str]) -> DownloadResult:
         """Download from AllDebrid"""
         if not self.alldebrid_api_key:
             return DownloadResult(False, DownloadSource.ALLDEBRID, [],
                                 "AllDebrid API key not configured", [])
-        
+
         try:
             from alldebrid_downloader import AllDebridDownloader
-            
+
             downloader = AllDebridDownloader(
                 self.alldebrid_api_key,
                 download_dir=str(self.output_dir),
                 progress_callback=self.progress_callback
             )
-            
+
             downloaded = downloader.download_links(urls)
-            
+
             return DownloadResult(
                 success=len(downloaded) > 0,
                 source=DownloadSource.ALLDEBRID,
@@ -781,7 +781,7 @@ class MusicDownloader:
             )
 
 
-def parse_urls(text: str) -> List[str]:
+def parse_urls(text: str) -> list[str]:
     """Parse URLs from text input"""
     # Match common URL patterns
     url_pattern = r'https?://[^\s<>"\']+[^\s<>"\'\.,;:\)\]\}]'
@@ -792,7 +792,7 @@ def parse_urls(text: str) -> List[str]:
 # CLI Interface
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Multi-Source Music Downloader")
     parser.add_argument('urls', nargs='*', help='URLs to download')
     parser.add_argument('-o', '--output', default=str(Path.home() / "Documents" / "Music"),
@@ -802,22 +802,22 @@ if __name__ == "__main__":
     parser.add_argument('--update', action='store_true',
                        help='Update yt-dlp and spotdl')
     parser.add_argument('--alldebrid-key', help='AllDebrid API key')
-    
+
     args = parser.parse_args()
-    
+
     downloader = MusicDownloader(
         output_dir=args.output,
         alldebrid_api_key=args.alldebrid_key or os.getenv('ALLDEBRID_API_KEY', '')
     )
-    
+
     if args.update:
         print("🔄 Updating tools...")
         results = downloader.update_tools()
         for tool, updated in results.items():
             status = "✅ Updated" if updated else "⚠️ Failed"
             print(f"   {tool}: {status}")
-        exit(0)
-    
+        sys.exit(0)
+
     if args.urls:
         urls = args.urls
     else:
@@ -825,15 +825,15 @@ if __name__ == "__main__":
         import sys
         text = sys.stdin.read()
         urls = parse_urls(text)
-    
+
     if not urls:
         print("❌ No URLs provided")
-        exit(1)
-    
+        sys.exit(1)
+
     print(f"📋 Found {len(urls)} URLs to download")
-    
+
     result = downloader.download(urls, audio_format=args.format)
-    
+
     print(f"\n{'✅' if result.success else '❌'} {result.message}")
     if result.errors:
         print("Errors:")

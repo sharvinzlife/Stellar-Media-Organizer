@@ -7,12 +7,12 @@ OMDb provides IMDb data including ratings, plot, cast, and more.
 Great for supplementing TMDB data or as a fallback.
 """
 
-import os
 import logging
-import requests
-from typing import Optional, Dict, List
+import os
 from dataclasses import dataclass, field
 from functools import lru_cache
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -37,23 +37,23 @@ class OMDbMovieInfo:
     year: str
     imdb_id: str
     type: str  # "movie" or "series"
-    rated: Optional[str] = None
-    released: Optional[str] = None
-    runtime: Optional[str] = None
-    genre: Optional[str] = None
-    director: Optional[str] = None
-    writer: Optional[str] = None
-    actors: Optional[str] = None
-    plot: Optional[str] = None
-    language: Optional[str] = None
-    country: Optional[str] = None
-    awards: Optional[str] = None
-    poster: Optional[str] = None
-    ratings: List[OMDbRating] = field(default_factory=list)
-    metascore: Optional[str] = None
-    imdb_rating: Optional[str] = None
-    imdb_votes: Optional[str] = None
-    box_office: Optional[str] = None
+    rated: str | None = None
+    released: str | None = None
+    runtime: str | None = None
+    genre: str | None = None
+    director: str | None = None
+    writer: str | None = None
+    actors: str | None = None
+    plot: str | None = None
+    language: str | None = None
+    country: str | None = None
+    awards: str | None = None
+    poster: str | None = None
+    ratings: list[OMDbRating] = field(default_factory=list)
+    metascore: str | None = None
+    imdb_rating: str | None = None
+    imdb_votes: str | None = None
+    box_office: str | None = None
 
 
 @dataclass
@@ -62,23 +62,23 @@ class OMDbSeriesInfo:
     title: str
     year: str  # e.g., "2016–2025"
     imdb_id: str
-    total_seasons: Optional[int] = None
-    rated: Optional[str] = None
-    released: Optional[str] = None
-    runtime: Optional[str] = None
-    genre: Optional[str] = None
-    director: Optional[str] = None
-    writer: Optional[str] = None
-    actors: Optional[str] = None
-    plot: Optional[str] = None
-    language: Optional[str] = None
-    country: Optional[str] = None
-    awards: Optional[str] = None
-    poster: Optional[str] = None
-    ratings: List[OMDbRating] = field(default_factory=list)
-    metascore: Optional[str] = None
-    imdb_rating: Optional[str] = None
-    imdb_votes: Optional[str] = None
+    total_seasons: int | None = None
+    rated: str | None = None
+    released: str | None = None
+    runtime: str | None = None
+    genre: str | None = None
+    director: str | None = None
+    writer: str | None = None
+    actors: str | None = None
+    plot: str | None = None
+    language: str | None = None
+    country: str | None = None
+    awards: str | None = None
+    poster: str | None = None
+    ratings: list[OMDbRating] = field(default_factory=list)
+    metascore: str | None = None
+    imdb_rating: str | None = None
+    imdb_votes: str | None = None
 
 
 @dataclass
@@ -88,11 +88,11 @@ class OMDbEpisodeInfo:
     season: int
     episode: int
     imdb_id: str
-    released: Optional[str] = None
-    runtime: Optional[str] = None
-    imdb_rating: Optional[str] = None
-    imdb_votes: Optional[str] = None
-    plot: Optional[str] = None
+    released: str | None = None
+    runtime: str | None = None
+    imdb_rating: str | None = None
+    imdb_votes: str | None = None
+    plot: str | None = None
 
 
 class OMDbError(Exception):
@@ -108,26 +108,26 @@ class OMDbNotFoundError(OMDbError):
 class OMDbClient:
     """
     OMDb API client for fetching IMDb data.
-    
+
     Usage:
         client = OMDbClient(api_key="your_key")
-        
+
         # Search by title
         movie = client.search_movie("Inception", year=2010)
-        
+
         # Get by IMDb ID
         movie = client.get_by_imdb_id("tt1375666")
-        
+
         # Get episode
         episode = client.get_episode("tt0944947", season=1, episode=1)
     """
-    
+
     BASE_URL = "http://www.omdbapi.com/"
-    
-    def __init__(self, api_key: Optional[str] = None, timeout: int = 10):
+
+    def __init__(self, api_key: str | None = None, timeout: int = 10):
         """
         Initialize OMDb client.
-        
+
         Args:
             api_key: OMDb API key (get from omdbapi.com)
             timeout: Request timeout in seconds
@@ -135,29 +135,29 @@ class OMDbClient:
         self.api_key = api_key or os.getenv(ENV_OMDB_API_KEY) or DEFAULT_API_KEY
         self.timeout = timeout
         self.session = requests.Session()
-    
+
     @classmethod
     def from_env(cls) -> "OMDbClient":
         """Create client from environment variables."""
         return cls(api_key=os.getenv(ENV_OMDB_API_KEY))
-    
-    def _request(self, params: Dict) -> Optional[Dict]:
+
+    def _request(self, params: dict) -> dict | None:
         """Make API request."""
         params["apikey"] = self.api_key
-        
+
         try:
             response = self.session.get(
                 self.BASE_URL,
                 params=params,
                 timeout=self.timeout
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
-                
+
                 if data.get("Response") == "True":
                     return data
-                elif data.get("Error"):
+                if data.get("Error"):
                     error = data["Error"]
                     if "not found" in error.lower():
                         raise OMDbNotFoundError(error)
@@ -165,21 +165,21 @@ class OMDbClient:
             else:
                 logger.error(f"OMDb API error {response.status_code}")
                 return None
-                
+
         except (OMDbNotFoundError, OMDbError):
             raise
         except Exception as e:
             logger.error(f"OMDb request failed: {e}")
             return None
-    
-    def _parse_ratings(self, ratings_list: List[Dict]) -> List[OMDbRating]:
+
+    def _parse_ratings(self, ratings_list: list[dict]) -> list[OMDbRating]:
         """Parse ratings list."""
         return [
             OMDbRating(source=r["Source"], value=r["Value"])
             for r in ratings_list
         ]
-    
-    def _parse_movie(self, data: Dict) -> OMDbMovieInfo:
+
+    def _parse_movie(self, data: dict) -> OMDbMovieInfo:
         """Parse movie data."""
         return OMDbMovieInfo(
             title=data.get("Title", ""),
@@ -204,13 +204,13 @@ class OMDbClient:
             imdb_votes=data.get("imdbVotes"),
             box_office=data.get("BoxOffice")
         )
-    
-    def _parse_series(self, data: Dict) -> OMDbSeriesInfo:
+
+    def _parse_series(self, data: dict) -> OMDbSeriesInfo:
         """Parse series data."""
         total_seasons = None
         if data.get("totalSeasons") and data["totalSeasons"].isdigit():
             total_seasons = int(data["totalSeasons"])
-        
+
         return OMDbSeriesInfo(
             title=data.get("Title", ""),
             year=data.get("Year", ""),
@@ -233,8 +233,8 @@ class OMDbClient:
             imdb_rating=data.get("imdbRating"),
             imdb_votes=data.get("imdbVotes")
         )
-    
-    def _parse_episode(self, data: Dict, season: int, episode: int) -> OMDbEpisodeInfo:
+
+    def _parse_episode(self, data: dict, season: int, episode: int) -> OMDbEpisodeInfo:
         """Parse episode data."""
         return OMDbEpisodeInfo(
             title=data.get("Title", ""),
@@ -247,92 +247,91 @@ class OMDbClient:
             imdb_votes=data.get("imdbVotes"),
             plot=data.get("Plot")
         )
-    
+
     @lru_cache(maxsize=200)
-    def search_movie(self, title: str, year: Optional[int] = None) -> Optional[OMDbMovieInfo]:
+    def search_movie(self, title: str, year: int | None = None) -> OMDbMovieInfo | None:
         """
         Search for a movie by title.
-        
+
         Args:
             title: Movie title
             year: Optional year to narrow search
-            
+
         Returns:
             OMDbMovieInfo if found
         """
         params = {"t": title, "type": "movie"}
         if year:
             params["y"] = year
-        
+
         try:
             data = self._request(params)
             if data:
                 return self._parse_movie(data)
         except OMDbNotFoundError:
             logger.debug(f"Movie not found: {title}")
-        
+
         return None
-    
+
     @lru_cache(maxsize=200)
-    def search_series(self, title: str) -> Optional[OMDbSeriesInfo]:
+    def search_series(self, title: str) -> OMDbSeriesInfo | None:
         """
         Search for a TV series by title.
-        
+
         Args:
             title: Series title
-            
+
         Returns:
             OMDbSeriesInfo if found
         """
         params = {"t": title, "type": "series"}
-        
+
         try:
             data = self._request(params)
             if data:
                 return self._parse_series(data)
         except OMDbNotFoundError:
             logger.debug(f"Series not found: {title}")
-        
+
         return None
-    
-    def get_by_imdb_id(self, imdb_id: str) -> Optional[OMDbMovieInfo]:
+
+    def get_by_imdb_id(self, imdb_id: str) -> OMDbMovieInfo | None:
         """
         Get movie/series by IMDb ID.
-        
+
         Args:
             imdb_id: IMDb ID (e.g., "tt1375666")
-            
+
         Returns:
             OMDbMovieInfo or OMDbSeriesInfo
         """
         params = {"i": imdb_id}
-        
+
         try:
             data = self._request(params)
             if data:
                 if data.get("Type") == "series":
                     return self._parse_series(data)
-                else:
-                    return self._parse_movie(data)
+                return self._parse_movie(data)
         except OMDbNotFoundError:
             logger.debug(f"IMDb ID not found: {imdb_id}")
-        
+
         return None
-    
+
     def get_episode(
         self,
         series_imdb_id: str,
         season: int,
         episode: int
-    ) -> Optional[OMDbEpisodeInfo]:
+    ) -> OMDbEpisodeInfo | None:
         """
         Get episode information.
-        
+
         Args:
             series_imdb_id: IMDb ID of the series
             season: Season number
             episode: Episode number
-            
+
         Returns:
             OMDbEpisodeInfo if found
         """
@@ -341,16 +340,16 @@ class OMDbClient:
             "Season": season,
             "Episode": episode
         }
-        
+
         try:
             data = self._request(params)
             if data:
                 return self._parse_episode(data, season, episode)
         except OMDbNotFoundError:
             logger.debug(f"Episode not found: {series_imdb_id} S{season}E{episode}")
-        
+
         return None
-    
+
     def test_connection(self) -> bool:
         """Test API connection."""
         try:
@@ -361,10 +360,10 @@ class OMDbClient:
 
 
 # Singleton
-_omdb_client: Optional[OMDbClient] = None
+_omdb_client: OMDbClient | None = None
 
 
-def get_omdb_client(api_key: Optional[str] = None) -> OMDbClient:
+def get_omdb_client(api_key: str | None = None) -> OMDbClient:
     """Get or create OMDb client singleton."""
     global _omdb_client
     if _omdb_client is None:
@@ -374,17 +373,17 @@ def get_omdb_client(api_key: Optional[str] = None) -> OMDbClient:
 
 if __name__ == "__main__":
     import sys
-    
+
     api_key = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_API_KEY
     client = OMDbClient(api_key=api_key)
-    
+
     # Test connection
     print("Testing OMDb connection...")
     if not client.test_connection():
         print("❌ Connection failed!")
         sys.exit(1)
     print("✅ Connected to OMDb\n")
-    
+
     # Test movie
     print("Testing movie lookup...")
     movie = client.search_movie("Inception", 2010)
@@ -392,12 +391,12 @@ if __name__ == "__main__":
         print(f"✅ {movie.title} ({movie.year})")
         print(f"   IMDb: {movie.imdb_rating}/10 ({movie.imdb_votes} votes)")
         print(f"   Genre: {movie.genre}")
-        print(f"   Ratings:")
+        print("   Ratings:")
         for rating in movie.ratings:
             print(f"      {rating.source}: {rating.value}")
-    
+
     print()
-    
+
     # Test series
     print("Testing series lookup...")
     series = client.search_series("Stranger Things")

@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.3.0] - 2026-01-01 🧹
+
+### 🧹 Code Cleanup & Centralization
+- **Centralized Constants** - Created `core/constants.py` as single source of truth for:
+  - `VIDEO_EXTENSIONS` - All supported video file extensions
+  - `LHARMONY_CATEGORY_MAP` / `STREAMWAVE_CATEGORY_MAP` - NAS category mappings
+  - `PLEX_LIBRARY_MAP` - Plex library name mappings
+  - `SUPPORTED_LANGUAGES` - Language list with emojis for UI
+  - `MIN_DISK_SPACE_GB` / `DEFAULT_CLEANUP_AGE_HOURS` - Download settings
+  - Helper functions: `get_download_base_dir()`, `get_nas_category_map()`, `get_plex_library_name()`
+- **Centralized Language Utils** - Created `core/language_utils.py` for:
+  - `LANGUAGE_KEYWORDS` - Comprehensive language code mappings (ISO 639-1/639-2)
+  - `detect_language_from_filename()` - Extract language hints from filenames
+  - `detect_language_from_mkv()` - Detect language from MKV audio tracks
+  - `get_category_for_language()` - Map language to NAS category
+  - `is_tv_content()` - Detect TV show patterns in filenames
+- **Removed Duplicate Code** - Eliminated inline definitions across:
+  - `standalone_backend.py` - Now imports from `core.constants`
+  - `webapp/backend/app/api/routes.py` - Uses centralized constants with fallback
+  - `core/nas_transfer.py` - Uses `get_nas_category_map()` instead of inline map
+  - `core/smart_renamer.py` - Uses `VIDEO_EXTENSIONS` from constants
+  - `media_organizer.py` - Uses centralized constants
+
+### 🐛 Bug Fixes
+- **Fixed `RenameResult.primary_language` AttributeError** - Added defensive `getattr()` access
+- **Fixed Download Cleanup** - Partial files and `.aria2` control files now cleaned on failure
+- **Fixed Pydantic v2 Validator** - Changed `@validator` to `@field_validator` with `@classmethod`
+- **Fixed TV Show Episode Naming** - TV shows no longer get same filename (skip IMDB-tagging for TV)
+
+### 📥 Download Improvements
+- **Retry Logic with Adaptive Connections** - Downloads retry with 8 → 6 → 4 connections on failure
+- **Better Download Directory** - Changed from `/tmp` to `~/alldebrid_downloads` (more disk space)
+- **Disk Space Check** - Warns before download if disk space is low
+- **Automatic Cleanup** - Old downloads (>24h) cleaned on startup and via `/api/v1/cleanup` endpoint
+
+### 🎯 Smart Category Detection
+- **Improved Logging** - Clearer logs showing WHY category was detected:
+  - `📺 Detected as TV show (episode pattern found)`
+  - `🎯 Metadata language → English (using general category)`
+  - `🔍 Category adjusted: malayalam movies → tv-shows`
+- **Language Detection Priority** - IMDB/TMDB metadata → Filename hints → MKV audio → Filter language
+- **English Content Handling** - English TV shows correctly go to `tv-shows` not `malayalam-tv-shows`
+
+### 🔧 Technical Improvements
+- **Pydantic v2 Compatibility** - All validators updated to v2 syntax
+- **Type Hints** - Improved type annotations across codebase
+- **Import Organization** - Cleaner imports with fallbacks for standalone operation
+
+---
+
 ## [3.2.1] - 2025-12-29 🎵
 
 ### 🎵 Music Downloads

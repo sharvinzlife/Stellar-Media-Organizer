@@ -3,13 +3,13 @@
 Plex Media Server API Client
 Handles library scanning, metadata matching, and media management
 """
-import re
-import time
 import logging
-import requests
-from typing import Optional, List, Dict, Any
+import time
 from dataclasses import dataclass
-from urllib.parse import urlencode, quote
+from typing import Any
+from urllib.parse import urlencode
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,9 @@ class PlexLibrary:
     agent: str
     scanner: str
     language: str
-    locations: List[str]
-    updated_at: Optional[int] = None
-    scanned_at: Optional[int] = None
+    locations: list[str]
+    updated_at: int | None = None
+    scanned_at: int | None = None
 
 
 @dataclass
@@ -34,18 +34,18 @@ class PlexMediaItem:
     rating_key: str
     title: str
     type: str
-    year: Optional[int] = None
-    summary: Optional[str] = None
-    guid: Optional[str] = None
-    imdb_id: Optional[str] = None
-    tmdb_id: Optional[str] = None
-    added_at: Optional[int] = None
-    duration: Optional[int] = None
-    library_section_id: Optional[int] = None
-    library_section_title: Optional[str] = None
+    year: int | None = None
+    summary: str | None = None
+    guid: str | None = None
+    imdb_id: str | None = None
+    tmdb_id: str | None = None
+    added_at: int | None = None
+    duration: int | None = None
+    library_section_id: int | None = None
+    library_section_title: str | None = None
 
 
-@dataclass 
+@dataclass
 class PlexSession:
     """Represents an active Plex session"""
     session_key: str
@@ -57,17 +57,17 @@ class PlexSession:
     state: str  # 'playing', 'paused', 'buffering'
     progress: int  # percentage
     duration: int
-    grandparent_title: Optional[str] = None  # For TV shows
-    parent_title: Optional[str] = None  # Season for TV shows
+    grandparent_title: str | None = None  # For TV shows
+    parent_title: str | None = None  # Season for TV shows
 
 
 class PlexClient:
     """Plex Media Server API Client"""
-    
+
     def __init__(self, server_url: str, token: str, timeout: int = 30):
         """
         Initialize Plex client.
-        
+
         Args:
             server_url: Plex server URL (e.g., http://192.168.1.100:32400)
             token: Plex authentication token
@@ -84,8 +84,8 @@ class PlexClient:
             'X-Plex-Product': 'Stellar Media Organizer',
             'X-Plex-Version': '1.0.0',
         })
-    
-    def _request(self, method: str, endpoint: str, params: Dict = None, **kwargs) -> Dict:
+
+    def _request(self, method: str, endpoint: str, params: dict | None = None, **kwargs) -> dict:
         """Make an API request to Plex server."""
         url = f"{self.server_url}{endpoint}"
         try:
@@ -93,7 +93,7 @@ class PlexClient:
                 method, url, params=params, timeout=self.timeout, **kwargs
             )
             response.raise_for_status()
-            
+
             # Plex returns JSON when Accept header is set
             if response.content:
                 return response.json()
@@ -101,8 +101,8 @@ class PlexClient:
         except requests.exceptions.RequestException as e:
             logger.error(f"Plex API request failed: {e}")
             raise
-    
-    def get_server_identity(self) -> Dict[str, Any]:
+
+    def get_server_identity(self) -> dict[str, Any]:
         """Get Plex server identity and status."""
         try:
             data = self._request('GET', '/')
@@ -120,13 +120,13 @@ class PlexClient:
         except Exception as e:
             logger.error(f"Failed to get server identity: {e}")
             return {}
-    
-    def get_libraries(self) -> List[PlexLibrary]:
+
+    def get_libraries(self) -> list[PlexLibrary]:
         """Get all library sections."""
         try:
             data = self._request('GET', '/library/sections')
             libraries = []
-            
+
             for section in data.get('MediaContainer', {}).get('Directory', []):
                 locations = [loc.get('path') for loc in section.get('Location', [])]
                 libraries.append(PlexLibrary(
@@ -140,13 +140,13 @@ class PlexClient:
                     updated_at=section.get('updatedAt'),
                     scanned_at=section.get('scannedAt'),
                 ))
-            
+
             return libraries
         except Exception as e:
             logger.error(f"Failed to get libraries: {e}")
             return []
-    
-    def get_library_by_path(self, path: str) -> Optional[PlexLibrary]:
+
+    def get_library_by_path(self, path: str) -> PlexLibrary | None:
         """Find library that contains the given path."""
         libraries = self.get_libraries()
         for lib in libraries:
@@ -154,8 +154,8 @@ class PlexClient:
                 if path.startswith(location) or location in path:
                     return lib
         return None
-    
-    def get_library_by_name(self, name: str) -> Optional[PlexLibrary]:
+
+    def get_library_by_name(self, name: str) -> PlexLibrary | None:
         """Find library by name (case-insensitive)."""
         libraries = self.get_libraries()
         name_lower = name.lower()
@@ -164,14 +164,14 @@ class PlexClient:
                 return lib
         return None
 
-    def scan_library(self, library_key: str, path: str = None) -> bool:
+    def scan_library(self, library_key: str, path: str | None = None) -> bool:
         """
         Trigger a library scan.
-        
+
         Args:
             library_key: Library section key
             path: Optional specific path to scan (for partial scans)
-        
+
         Returns:
             True if scan was triggered successfully
         """
@@ -180,60 +180,60 @@ class PlexClient:
             params = {}
             if path:
                 params['path'] = path
-            
+
             self._request('GET', endpoint, params=params)
-            logger.info(f"Triggered library scan for section {library_key}" + 
+            logger.info(f"Triggered library scan for section {library_key}" +
                        (f" path: {path}" if path else ""))
             return True
         except Exception as e:
             logger.error(f"Failed to trigger library scan: {e}")
             return False
-    
-    def scan_library_by_name(self, library_name: str, path: str = None) -> bool:
+
+    def scan_library_by_name(self, library_name: str, path: str | None = None) -> bool:
         """Trigger a library scan by library name."""
         library = self.get_library_by_name(library_name)
         if library:
             return self.scan_library(library.key, path)
         logger.warning(f"Library not found: {library_name}")
         return False
-    
-    def search(self, query: str, limit: int = 10) -> List[PlexMediaItem]:
+
+    def search(self, query: str, limit: int = 10) -> list[PlexMediaItem]:
         """Search for media across all libraries."""
         try:
             data = self._request('GET', '/search', params={'query': query})
             items = []
-            
+
             for item in data.get('MediaContainer', {}).get('Metadata', [])[:limit]:
                 items.append(self._parse_media_item(item))
-            
+
             return items
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return []
-    
-    def get_recently_added(self, library_key: str = None, limit: int = 20) -> List[PlexMediaItem]:
+
+    def get_recently_added(self, library_key: str | None = None, limit: int = 20) -> list[PlexMediaItem]:
         """Get recently added items."""
         try:
             if library_key:
                 endpoint = f'/library/sections/{library_key}/recentlyAdded'
             else:
                 endpoint = '/library/recentlyAdded'
-            
+
             data = self._request('GET', endpoint, params={
                 'X-Plex-Container-Start': 0,
                 'X-Plex-Container-Size': limit
             })
-            
+
             items = []
             for item in data.get('MediaContainer', {}).get('Metadata', []):
                 items.append(self._parse_media_item(item))
-            
+
             return items
         except Exception as e:
             logger.error(f"Failed to get recently added: {e}")
             return []
-    
-    def get_item_by_rating_key(self, rating_key: str) -> Optional[PlexMediaItem]:
+
+    def get_item_by_rating_key(self, rating_key: str) -> PlexMediaItem | None:
         """Get a specific media item by rating key."""
         try:
             data = self._request('GET', f'/library/metadata/{rating_key}')
@@ -244,17 +244,17 @@ class PlexClient:
         except Exception as e:
             logger.error(f"Failed to get item {rating_key}: {e}")
             return None
-    
-    def get_active_sessions(self) -> List[PlexSession]:
+
+    def get_active_sessions(self) -> list[PlexSession]:
         """Get currently active streaming sessions."""
         try:
             data = self._request('GET', '/status/sessions')
             sessions = []
-            
+
             for item in data.get('MediaContainer', {}).get('Metadata', []):
                 user = item.get('User', {})
                 player = item.get('Player', {})
-                
+
                 sessions.append(PlexSession(
                     session_key=item.get('sessionKey'),
                     title=item.get('title'),
@@ -268,19 +268,19 @@ class PlexClient:
                     grandparent_title=item.get('grandparentTitle'),
                     parent_title=item.get('parentTitle'),
                 ))
-            
+
             return sessions
         except Exception as e:
             logger.error(f"Failed to get active sessions: {e}")
             return []
-    
-    def _parse_media_item(self, item: Dict) -> PlexMediaItem:
+
+    def _parse_media_item(self, item: dict) -> PlexMediaItem:
         """Parse a media item from API response."""
         # Extract IMDB/TMDB IDs from GUID
         guid = item.get('guid', '')
         imdb_id = None
         tmdb_id = None
-        
+
         # Check Guid array for external IDs
         for g in item.get('Guid', []):
             gid = g.get('id', '')
@@ -288,7 +288,7 @@ class PlexClient:
                 imdb_id = gid.replace('imdb://', '')
             elif 'tmdb://' in gid:
                 tmdb_id = gid.replace('tmdb://', '')
-        
+
         return PlexMediaItem(
             rating_key=item.get('ratingKey'),
             title=item.get('title'),
@@ -303,18 +303,18 @@ class PlexClient:
             library_section_id=item.get('librarySectionID'),
             library_section_title=item.get('librarySectionTitle'),
         )
-    
+
     # ========== Metadata Matching ==========
-    
-    def get_matches(self, rating_key: str, title: str = None, year: str = None) -> List[Dict]:
+
+    def get_matches(self, rating_key: str, title: str | None = None, year: str | None = None) -> list[dict]:
         """
         Get potential metadata matches for an item.
-        
+
         Args:
             rating_key: The item's rating key
             title: Optional title to search for
             year: Optional year to filter by
-        
+
         Returns:
             List of potential matches with their GUIDs
         """
@@ -325,16 +325,16 @@ class PlexClient:
                 params['title'] = title
             if year:
                 params['year'] = year
-            
+
             # Plex returns XML for matches endpoint
             url = f"{self.server_url}{endpoint}?{urlencode(params)}"
             response = self.session.get(url, timeout=self.timeout)
             response.raise_for_status()
-            
+
             # Parse XML response for matches
             matches = []
             content = response.text
-            
+
             # Extract SearchResult elements
             import re
             pattern = r'<SearchResult[^>]*guid="([^"]+)"[^>]*name="([^"]+)"[^>]*year="([^"]*)"[^>]*score="([^"]*)"'
@@ -345,22 +345,22 @@ class PlexClient:
                     'year': match.group(3),
                     'score': match.group(4),
                 })
-            
+
             return matches
         except Exception as e:
             logger.error(f"Failed to get matches: {e}")
             return []
-    
-    def match_item(self, rating_key: str, guid: str, name: str = None, year: str = None) -> bool:
+
+    def match_item(self, rating_key: str, guid: str, name: str | None = None, year: str | None = None) -> bool:
         """
         Match an item with a specific GUID (IMDB/TMDB).
-        
+
         Args:
             rating_key: The item's rating key
             guid: The GUID to match with (e.g., 'plex://movie/...', 'imdb://tt1234567')
             name: Optional name for the match
             year: Optional year for the match
-        
+
         Returns:
             True if match was successful
         """
@@ -371,32 +371,32 @@ class PlexClient:
                 params['name'] = name
             if year:
                 params['year'] = year
-            
+
             url = f"{self.server_url}{endpoint}?{urlencode(params)}&X-Plex-Token={self.token}"
             response = self.session.put(url, timeout=self.timeout)
-            
+
             logger.info(f"Matched item {rating_key} with GUID {guid}")
             return response.status_code in [200, 204]
         except Exception as e:
             logger.error(f"Failed to match item: {e}")
             return False
-    
-    def match_with_imdb(self, rating_key: str, imdb_id: str, title: str = None, year: str = None) -> bool:
+
+    def match_with_imdb(self, rating_key: str, imdb_id: str, title: str | None = None, year: str | None = None) -> bool:
         """
         Match an item with an IMDB ID.
-        
+
         This searches for the Plex GUID using the IMDB ID, then matches.
         """
         try:
             # First, search for matches using IMDB ID
             matches = self.get_matches(rating_key, title=imdb_id)
-            
+
             plex_guid = None
             for match in matches:
                 if match.get('guid', '').startswith('plex://'):
                     plex_guid = match['guid']
                     break
-            
+
             # If no Plex GUID found, try title search
             if not plex_guid and title:
                 matches = self.get_matches(rating_key, title=title, year=year)
@@ -404,24 +404,24 @@ class PlexClient:
                     if match.get('guid', '').startswith('plex://'):
                         plex_guid = match['guid']
                         break
-            
+
             # Fallback to imdb:// format
             if not plex_guid:
                 plex_guid = f"imdb://{imdb_id}"
-            
+
             # Match with the GUID
             success = self.match_item(rating_key, plex_guid, name=title, year=year)
-            
+
             if success:
                 # Refresh metadata after matching
                 time.sleep(1)
                 self.refresh_item(rating_key)
-            
+
             return success
         except Exception as e:
             logger.error(f"Failed to match with IMDB: {e}")
             return False
-    
+
     def refresh_item(self, rating_key: str, force: bool = True) -> bool:
         """Refresh metadata for a specific item."""
         try:
@@ -429,24 +429,24 @@ class PlexClient:
             params = {}
             if force:
                 params['force'] = '1'
-            
+
             url = f"{self.server_url}{endpoint}?{urlencode(params)}&X-Plex-Token={self.token}"
             response = self.session.put(url, timeout=self.timeout)
-            
+
             logger.info(f"Refreshed metadata for item {rating_key}")
             return response.status_code in [200, 204]
         except Exception as e:
             logger.error(f"Failed to refresh item: {e}")
             return False
-    
+
     def set_rating(self, rating_key: str, rating: float) -> bool:
         """
         Set user rating for an item.
-        
+
         Args:
             rating_key: The item's rating key
             rating: Rating value (1-10 scale)
-        
+
         Returns:
             True if rating was set successfully
         """
@@ -457,81 +457,81 @@ class PlexClient:
                 'identifier': 'com.plexapp.plugins.library',
                 'rating': str(rating),
             }
-            
+
             url = f"{self.server_url}{endpoint}?{urlencode(params)}&X-Plex-Token={self.token}"
             response = self.session.put(url, timeout=self.timeout)
-            
+
             logger.info(f"Set rating {rating} for item {rating_key}")
             return response.status_code in [200, 204]
         except Exception as e:
             logger.error(f"Failed to set rating: {e}")
             return False
-    
-    def wait_for_item(self, title: str, max_wait: int = 120, check_interval: int = 5) -> Optional[PlexMediaItem]:
+
+    def wait_for_item(self, title: str, max_wait: int = 120, check_interval: int = 5) -> PlexMediaItem | None:
         """
         Wait for a newly added item to appear in Plex.
-        
+
         Args:
             title: Title to search for
             max_wait: Maximum wait time in seconds
             check_interval: Time between checks in seconds
-        
+
         Returns:
             The found item or None if not found within max_wait
         """
         start_time = time.time()
-        
+
         while time.time() - start_time < max_wait:
             items = self.search(title, limit=5)
             for item in items:
                 if title.lower() in item.title.lower():
                     logger.info(f"Found item in Plex: {item.title} (key: {item.rating_key})")
                     return item
-            
+
             logger.debug(f"Item not found yet, waiting... ({int(time.time() - start_time)}s)")
             time.sleep(check_interval)
-        
+
         logger.warning(f"Item not found in Plex after {max_wait}s: {title}")
         return None
-    
+
     # ========== Poster/Art Management ==========
-    
+
     def upload_poster(self, rating_key: str, poster_data: bytes) -> bool:
         """
         Upload a custom poster for an item.
-        
+
         Args:
             rating_key: The item's rating key
             poster_data: Raw image bytes (JPEG/PNG)
-        
+
         Returns:
             True if upload was successful
         """
         try:
             endpoint = f'/library/metadata/{rating_key}/posters'
             url = f"{self.server_url}{endpoint}?X-Plex-Token={self.token}"
-            
+
             response = self.session.post(
                 url,
                 data=poster_data,
                 headers={'Content-Type': 'image/jpeg'},
                 timeout=self.timeout
             )
-            
+
             logger.info(f"Uploaded poster for item {rating_key}")
             return response.status_code in [200, 201, 204]
         except Exception as e:
             logger.error(f"Failed to upload poster: {e}")
             return False
-    
+
     def upload_poster_from_url(self, rating_key: str, poster_url: str) -> bool:
         """
         Set poster from a URL.
-        
+
         Args:
             rating_key: The item's rating key
             poster_url: URL of the poster image
-        
+
         Returns:
             True if successful
         """
@@ -539,74 +539,74 @@ class PlexClient:
             # Plex can accept poster URLs directly
             endpoint = f'/library/metadata/{rating_key}/posters'
             params = {'url': poster_url}
-            
+
             url = f"{self.server_url}{endpoint}?{urlencode(params)}&X-Plex-Token={self.token}"
             response = self.session.post(url, timeout=self.timeout)
-            
+
             logger.info(f"Set poster from URL for item {rating_key}")
             return response.status_code in [200, 201, 204]
         except Exception as e:
             logger.error(f"Failed to set poster from URL: {e}")
             return False
-    
+
     def upload_art(self, rating_key: str, art_data: bytes) -> bool:
         """
         Upload custom background art for an item.
-        
+
         Args:
             rating_key: The item's rating key
             art_data: Raw image bytes (JPEG/PNG)
-        
+
         Returns:
             True if upload was successful
         """
         try:
             endpoint = f'/library/metadata/{rating_key}/arts'
             url = f"{self.server_url}{endpoint}?X-Plex-Token={self.token}"
-            
+
             response = self.session.post(
                 url,
                 data=art_data,
                 headers={'Content-Type': 'image/jpeg'},
                 timeout=self.timeout
             )
-            
+
             logger.info(f"Uploaded art for item {rating_key}")
             return response.status_code in [200, 201, 204]
         except Exception as e:
             logger.error(f"Failed to upload art: {e}")
             return False
-    
+
     def upload_art_from_url(self, rating_key: str, art_url: str) -> bool:
         """
         Set background art from a URL.
-        
+
         Args:
             rating_key: The item's rating key
             art_url: URL of the background image
-        
+
         Returns:
             True if successful
         """
         try:
             endpoint = f'/library/metadata/{rating_key}/arts'
             params = {'url': art_url}
-            
+
             url = f"{self.server_url}{endpoint}?{urlencode(params)}&X-Plex-Token={self.token}"
             response = self.session.post(url, timeout=self.timeout)
-            
+
             logger.info(f"Set art from URL for item {rating_key}")
             return response.status_code in [200, 201, 204]
         except Exception as e:
             logger.error(f"Failed to set art from URL: {e}")
             return False
-    
-    def get_posters(self, rating_key: str) -> List[Dict]:
+
+    def get_posters(self, rating_key: str) -> list[dict]:
         """Get available posters for an item."""
         try:
             endpoint = f'/library/metadata/{rating_key}/posters'
             data = self._request('GET', endpoint)
-            
+
             posters = []
             for item in data.get('MediaContainer', {}).get('Metadata', []):
                 posters.append({
@@ -620,21 +620,21 @@ class PlexClient:
         except Exception as e:
             logger.error(f"Failed to get posters: {e}")
             return []
-    
+
     def select_poster(self, rating_key: str, poster_key: str) -> bool:
         """Select a specific poster for an item."""
         try:
             endpoint = f'/library/metadata/{rating_key}/poster'
             params = {'url': poster_key}
-            
+
             url = f"{self.server_url}{endpoint}?{urlencode(params)}&X-Plex-Token={self.token}"
             response = self.session.put(url, timeout=self.timeout)
-            
+
             return response.status_code in [200, 204]
         except Exception as e:
             logger.error(f"Failed to select poster: {e}")
             return False
-    
+
     def is_library_scanning(self, library_key: str) -> bool:
         """Check if a library is currently scanning."""
         try:

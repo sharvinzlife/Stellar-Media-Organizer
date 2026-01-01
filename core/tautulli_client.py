@@ -4,10 +4,11 @@ Tautulli API Client
 Handles Plex statistics, monitoring, and watch history
 """
 import logging
-import requests
-from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,8 @@ class TautulliUserStats:
     friendly_name: str
     total_plays: int
     total_duration: int  # seconds
-    last_seen: Optional[int] = None
-    last_played: Optional[str] = None
+    last_seen: int | None = None
+    last_played: str | None = None
 
 
 @dataclass
@@ -48,12 +49,12 @@ class TautulliHistoryItem:
     player: str
     title: str
     user: str
-    year: Optional[int] = None
+    year: int | None = None
     watched_status: float = 0.0
     percent_complete: int = 0
-    grandparent_title: Optional[str] = None  # Series name for TV
-    parent_media_index: Optional[int] = None  # Season number
-    media_index: Optional[int] = None  # Episode number
+    grandparent_title: str | None = None  # Series name for TV
+    parent_media_index: int | None = None  # Season number
+    media_index: int | None = None  # Episode number
 
 
 @dataclass
@@ -68,11 +69,11 @@ class TautulliServerStatus:
 
 class TautulliClient:
     """Tautulli API Client for Plex monitoring and statistics"""
-    
+
     def __init__(self, base_url: str, api_key: str, timeout: int = 30):
         """
         Initialize Tautulli client.
-        
+
         Args:
             base_url: Tautulli server URL (e.g., http://192.168.1.100:8181)
             api_key: Tautulli API key
@@ -82,33 +83,33 @@ class TautulliClient:
         self.api_key = api_key
         self.timeout = timeout
         self.session = requests.Session()
-    
-    def _request(self, cmd: str, params: Dict = None) -> Dict:
+
+    def _request(self, cmd: str, params: dict | None = None) -> dict:
         """Make an API request to Tautulli."""
         url = f"{self.base_url}/api/v2"
-        
+
         request_params = {
             'apikey': self.api_key,
             'cmd': cmd,
         }
         if params:
             request_params.update(params)
-        
+
         try:
             response = self.session.get(url, params=request_params, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
-            
+
             if data.get('response', {}).get('result') != 'success':
                 error_msg = data.get('response', {}).get('message', 'Unknown error')
                 raise Exception(f"Tautulli API error: {error_msg}")
-            
+
             return data.get('response', {}).get('data', {})
         except requests.exceptions.RequestException as e:
             logger.error(f"Tautulli API request failed: {e}")
             raise
-    
-    def get_server_status(self) -> Optional[TautulliServerStatus]:
+
+    def get_server_status(self) -> TautulliServerStatus | None:
         """Get Plex server status including remote access."""
         try:
             data = self._request('get_server_status')
@@ -122,13 +123,13 @@ class TautulliClient:
         except Exception as e:
             logger.error(f"Failed to get server status: {e}")
             return None
-    
-    def get_libraries(self) -> List[TautulliLibrary]:
+
+    def get_libraries(self) -> list[TautulliLibrary]:
         """Get all Plex libraries."""
         try:
             data = self._request('get_libraries')
             libraries = []
-            
+
             for lib in data:
                 libraries.append(TautulliLibrary(
                     section_id=int(lib.get('section_id', 0)),
@@ -139,13 +140,13 @@ class TautulliClient:
                     child_count=int(lib.get('child_count', 0)),
                     is_active=lib.get('is_active', 1) == 1,
                 ))
-            
+
             return libraries
         except Exception as e:
             logger.error(f"Failed to get libraries: {e}")
             return []
-    
-    def get_library_by_name(self, name: str) -> Optional[TautulliLibrary]:
+
+    def get_library_by_name(self, name: str) -> TautulliLibrary | None:
         """Find library by name (case-insensitive)."""
         libraries = self.get_libraries()
         name_lower = name.lower()
@@ -154,7 +155,7 @@ class TautulliClient:
                 return lib
         return None
 
-    def get_activity(self) -> Dict[str, Any]:
+    def get_activity(self) -> dict[str, Any]:
         """Get current server activity (active streams)."""
         try:
             data = self._request('get_activity')
@@ -168,12 +169,12 @@ class TautulliClient:
         except Exception as e:
             logger.error(f"Failed to get activity: {e}")
             return {'stream_count': 0, 'sessions': []}
-    
-    def get_home_stats(self, stat_id: str = 'top_users', time_range: int = 30, 
-                       stats_count: int = 10) -> List[Dict]:
+
+    def get_home_stats(self, stat_id: str = 'top_users', time_range: int = 30,
+                       stats_count: int = 10) -> list[dict]:
         """
         Get home statistics.
-        
+
         Args:
             stat_id: Type of stats ('top_users', 'popular_movies', 'popular_tv', etc.)
             time_range: Number of days to include
@@ -189,12 +190,12 @@ class TautulliClient:
         except Exception as e:
             logger.error(f"Failed to get home stats: {e}")
             return []
-    
-    def get_user_stats(self, days: int = 30) -> List[TautulliUserStats]:
+
+    def get_user_stats(self, days: int = 30) -> list[TautulliUserStats]:
         """Get user statistics for the specified time period."""
         try:
             data = self.get_home_stats('top_users', time_range=days, stats_count=25)
-            
+
             users = []
             for row in data:
                 users.append(TautulliUserStats(
@@ -206,17 +207,17 @@ class TautulliClient:
                     last_seen=row.get('last_play'),
                     last_played=row.get('title'),
                 ))
-            
+
             return users
         except Exception as e:
             logger.error(f"Failed to get user stats: {e}")
             return []
-    
-    def get_history(self, user: str = None, section_id: int = None, 
-                    length: int = 25, days: int = None) -> List[TautulliHistoryItem]:
+
+    def get_history(self, user: str | None = None, section_id: int | None = None,
+                    length: int = 25, days: int | None = None) -> list[TautulliHistoryItem]:
         """
         Get watch history.
-        
+
         Args:
             user: Filter by username
             section_id: Filter by library section ID
@@ -233,20 +234,20 @@ class TautulliClient:
                 params['user'] = user
             if section_id:
                 params['section_id'] = section_id
-            
+
             data = self._request('get_history', params)
             history_data = data.get('data', []) if isinstance(data, dict) else data
-            
+
             items = []
             cutoff_time = None
             if days:
                 cutoff_time = (datetime.now() - timedelta(days=days)).timestamp()
-            
+
             for item in history_data:
                 date = item.get('date', 0)
                 if cutoff_time and date < cutoff_time:
                     continue
-                
+
                 items.append(TautulliHistoryItem(
                     date=date,
                     duration=item.get('duration', 0),
@@ -264,13 +265,13 @@ class TautulliClient:
                     parent_media_index=item.get('parent_media_index'),
                     media_index=item.get('media_index'),
                 ))
-            
+
             return items
         except Exception as e:
             logger.error(f"Failed to get history: {e}")
             return []
-    
-    def get_library_watch_time_stats(self, section_id: int, days: int = 30) -> Dict:
+
+    def get_library_watch_time_stats(self, section_id: int, days: int = 30) -> dict:
         """Get watch time statistics for a library."""
         try:
             data = self._request('get_library_watch_time_stats', {
@@ -282,8 +283,8 @@ class TautulliClient:
         except Exception as e:
             logger.error(f"Failed to get library watch time stats: {e}")
             return {}
-    
-    def get_library_user_stats(self, section_id: int, days: int = 30) -> List[Dict]:
+
+    def get_library_user_stats(self, section_id: int, days: int = 30) -> list[dict]:
         """Get user statistics for a specific library."""
         try:
             data = self._request('get_library_user_stats', {
@@ -294,23 +295,23 @@ class TautulliClient:
         except Exception as e:
             logger.error(f"Failed to get library user stats: {e}")
             return []
-    
-    def get_popular_movies(self, days: int = 30, count: int = 10) -> List[Dict]:
+
+    def get_popular_movies(self, days: int = 30, count: int = 10) -> list[dict]:
         """Get most popular movies."""
         return self.get_home_stats('popular_movies', time_range=days, stats_count=count)
-    
-    def get_popular_tv(self, days: int = 30, count: int = 10) -> List[Dict]:
+
+    def get_popular_tv(self, days: int = 30, count: int = 10) -> list[dict]:
         """Get most popular TV shows."""
         return self.get_home_stats('popular_tv', time_range=days, stats_count=count)
-    
-    def get_most_watched(self, days: int = 30, count: int = 10) -> List[Dict]:
+
+    def get_most_watched(self, days: int = 30, count: int = 10) -> list[dict]:
         """Get most watched content."""
         return self.get_home_stats('most_watched', time_range=days, stats_count=count)
-    
+
     def notify(self, notifier_id: int, subject: str, body: str) -> bool:
         """
         Send a notification through Tautulli.
-        
+
         Args:
             notifier_id: The notifier agent ID
             subject: Notification subject
@@ -326,7 +327,7 @@ class TautulliClient:
         except Exception as e:
             logger.error(f"Failed to send notification: {e}")
             return False
-    
+
     def refresh_libraries_list(self) -> bool:
         """Refresh the libraries list in Tautulli."""
         try:
@@ -343,7 +344,7 @@ def format_duration(seconds: int) -> str:
     """Convert seconds to human-readable format."""
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
-    
+
     if hours > 0:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
