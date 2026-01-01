@@ -182,12 +182,66 @@ class FilenameParser:
             filename = pattern.sub('', filename)
         return filename.strip()
 
+    def _deobfuscate_title(self, title: str) -> str:
+        """
+        Fix common character substitutions used to avoid DMCA.
+        
+        Examples:
+            Z00topia → Zootopia
+            M0ana → Moana
+            F1nding Nemo → Finding Nemo
+            Th3 Lion King → The Lion King
+        """
+        # Common leetspeak/obfuscation substitutions
+        substitutions = [
+            ('0', 'o'),  # Z00topia → Zootopia
+            ('1', 'i'),  # F1nding → Finding
+            ('3', 'e'),  # Th3 → The
+            ('4', 'a'),  # M4trix → Matrix
+            ('5', 's'),  # 5pider → Spider
+            ('7', 't'),  # 7hor → Thor
+            ('8', 'b'),  # 8atman → Batman
+            ('@', 'a'),  # M@trix → Matrix
+            ('$', 's'),  # $pider → Spider
+        ]
+        
+        result = title
+        
+        # Multiple passes to handle consecutive substitutions (Z00topia)
+        for _ in range(3):
+            prev = result
+            for char, replacement in substitutions:
+                # Replace digit/symbol within a word (between letters or followed by letters)
+                result = re.sub(
+                    rf'(?<=[A-Za-z]){re.escape(char)}(?=[A-Za-z0-9])',
+                    replacement,
+                    result
+                )
+                # Handle digit at end of word preceded by 2+ letters (Th3 → The)
+                result = re.sub(
+                    rf'(?<=[A-Za-z]{{2}}){re.escape(char)}\b',
+                    replacement,
+                    result
+                )
+                # Handle at start of word followed by letters
+                result = re.sub(
+                    rf'\b{re.escape(char)}(?=[A-Za-z]{{2,}})',
+                    replacement.upper(),
+                    result
+                )
+            if result == prev:
+                break
+        
+        return result
+
     def _clean_title(self, title: str) -> str:
         """Clean up extracted title."""
         # Replace separators with spaces
         title = re.sub(r'[._]+', ' ', title)
         # Remove extra whitespace
         title = re.sub(r'\s+', ' ', title)
+        # Deobfuscate leetspeak (Z00topia → Zootopia)
+        title = self._deobfuscate_title(title)
         # Title case
         return title.strip().title()
 
