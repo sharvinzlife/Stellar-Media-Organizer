@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.4.0] - 2026-01-01 🎉✨
+
+### 🎊 Celebratory Popups & Sounds
+- **Success Popup** - Beautiful green celebratory popup with party popper icon on job completion
+- **Failure Popup** - Red alert popup with shake animation on job failure (auto-dismisses after 5s)
+- **Sound Effects** - Web Audio API sounds: ascending melody for success, descending for failure
+- **React Portal** - Popups render outside Card component to avoid CSS clipping issues
+
+### 💚 Green Sparkling Progress Bar
+- **Green Gradient** - Progress bar changed from blue to emerald green gradient
+- **Shimmer Animation** - White shine sweep effect moving across the bar
+- **Sparkle Particles** - Radial gradient sparkles that dance and move
+- **Glow Effect** - Soft green glow shadow around the progress bar
+- **Consistent Styling** - Same animation applied to AllDebridPanel, ActiveConversions, and JobHistory
+
+### 📝 Live Log Display
+- **Real-time Updates** - Latest log message shown below progress bar, updates every 2 seconds
+- **Pulsing Indicator** - Green dot pulses to show live updates
+- **Clean Messages** - Timestamps and emojis stripped for cleaner display
+- **Phase Fallback** - Shows current phase when no new logs available
+
+### 🔧 UI Fixes
+- **Auto-scroll Fix** - LogViewer no longer scrolls entire page, only scrolls within container
+- **Removed Debug Buttons** - Test Success/Failure buttons removed from production
+
+---
+
 ## [3.3.0] - 2026-01-01 🧹
 
 ### 🧹 Code Cleanup & Centralization

@@ -23,11 +23,12 @@ const LogViewer: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [autoScroll, setAutoScroll] = useState<boolean>(false);
-  const logEndRef = useRef<HTMLDivElement>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = (): void => {
-    if (autoScroll) {
-      logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && logContainerRef.current) {
+      // Scroll within the container only, not the whole page
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   };
 
@@ -178,7 +179,10 @@ const LogViewer: React.FC = () => {
 
       {isExpanded && (
         <CardContent className="p-0">
-          <div className="max-h-80 overflow-y-auto bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl p-4 font-mono text-sm">
+          <div 
+            ref={logContainerRef}
+            className="max-h-80 overflow-y-auto bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-xl p-4 font-mono text-sm"
+          >
             {logs.length === 0 ? (
               <div className="text-center text-slate-500 py-8">
                 No logs yet. Activity will appear here.
@@ -194,7 +198,6 @@ const LogViewer: React.FC = () => {
                     <span className="text-xs">{log.message}</span>
                   </div>
                 ))}
-                <div ref={logEndRef} />
               </div>
             )}
           </div>

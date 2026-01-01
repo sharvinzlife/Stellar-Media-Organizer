@@ -5,7 +5,7 @@ Shared logic used by both CLI and API
 # Lazy imports to avoid dependency issues
 import contextlib
 
-__version__ = "6.2.0"
+__version__ = "6.3.0"
 
 # Database (optional - requires sqlalchemy)
 def get_db():

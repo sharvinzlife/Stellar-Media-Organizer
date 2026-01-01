@@ -338,18 +338,56 @@ const ActiveConversions: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Progress bar */}
+                  {/* Progress bar - Green with sparkle animation */}
                   <div className="mb-2">
                     <div className="flex justify-between text-xs text-slate-400 mb-1">
                       <span className="truncate max-w-[70%]">
                         {job.current_file || job.input_path || 'Processing...'}
                       </span>
-                      <span>{Math.round(job.progress)}%</span>
+                      <span className="text-emerald-400 font-semibold">{Math.round(job.progress)}%</span>
                     </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-3 bg-slate-800 rounded-full overflow-hidden relative">
                       <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-500"
-                        style={{ width: `${job.progress}%` }}
+                        className="h-full rounded-full transition-all duration-500 relative overflow-hidden"
+                        style={{ 
+                          width: `${job.progress}%`,
+                          background: 'linear-gradient(90deg, #10b981, #34d399, #6ee7b3, #34d399, #10b981)',
+                          backgroundSize: '200% 100%',
+                          animation: 'gradient-flow 2s linear infinite'
+                        }}
+                      >
+                        {/* Sparkle overlay */}
+                        <div 
+                          className="absolute inset-0"
+                          style={{
+                            background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
+                            backgroundSize: '50% 100%',
+                            animation: 'shimmer-fast 1.5s ease-in-out infinite'
+                          }}
+                        />
+                        {/* Moving sparkles */}
+                        <div 
+                          className="absolute inset-0 opacity-60"
+                          style={{
+                            backgroundImage: `
+                              radial-gradient(2px 2px at 10% 50%, rgba(255,255,255,0.9), transparent),
+                              radial-gradient(2px 2px at 30% 30%, rgba(255,255,255,0.8), transparent),
+                              radial-gradient(1px 1px at 50% 70%, rgba(255,255,255,0.9), transparent),
+                              radial-gradient(2px 2px at 70% 40%, rgba(255,255,255,0.7), transparent),
+                              radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.8), transparent)
+                            `,
+                            animation: 'sparkle-move 2s ease-in-out infinite'
+                          }}
+                        />
+                      </div>
+                      {/* Glow effect */}
+                      <div 
+                        className="absolute top-0 left-0 h-full rounded-full pointer-events-none"
+                        style={{ 
+                          width: `${job.progress}%`,
+                          boxShadow: '0 0 15px rgba(52, 211, 153, 0.6), 0 0 30px rgba(16, 185, 129, 0.4)',
+                          transition: 'width 0.5s ease'
+                        }}
                       />
                     </div>
                   </div>

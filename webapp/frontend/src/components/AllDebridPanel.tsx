@@ -1,7 +1,8 @@
-import React, { useState, useEffect, ChangeEvent } from 'react';
+import React, { useState, useEffect, ChangeEvent, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/Card';
 import Button from './ui/Button';
-import { Cloud, Download, Loader2, Link2, CheckCircle, HardDrive, FolderOpen, Sparkles, Film, Filter, Upload, RefreshCw } from 'lucide-react';
+import { Cloud, Download, Loader2, Link2, CheckCircle, HardDrive, FolderOpen, Sparkles, Film, Filter, Upload, RefreshCw, PartyPopper, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../lib/api';
 
@@ -64,6 +65,56 @@ const PHASE_LABELS: Record<string, { label: string; icon: string; color: string 
   'failed': { label: 'Failed', icon: '❌', color: 'text-red-400' },
 };
 
+// Sound utility using Web Audio API
+const playSound = (type: 'success' | 'failure'): void => {
+  try {
+    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    if (type === 'success') {
+      // Catchy success melody: ascending notes
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+      const duration = 0.15;
+      
+      notes.forEach((freq, i) => {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.3, audioContext.currentTime + i * duration);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + (i + 1) * duration);
+        osc.start(audioContext.currentTime + i * duration);
+        osc.stop(audioContext.currentTime + (i + 1) * duration);
+      });
+    } else {
+      // Failure sound: descending notes
+      const notes = [440, 349.23, 293.66]; // A4, F4, D4
+      const duration = 0.2;
+      
+      notes.forEach((freq, i) => {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.type = 'triangle';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.25, audioContext.currentTime + i * duration);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + (i + 1) * duration);
+        osc.start(audioContext.currentTime + i * duration);
+        osc.stop(audioContext.currentTime + (i + 1) * duration);
+      });
+    }
+  } catch (e) {
+    console.warn('Could not play sound:', e);
+  }
+};
+
 const AllDebridPanel: React.FC = () => {
   const [links, setLinks] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
@@ -82,6 +133,35 @@ const AllDebridPanel: React.FC = () => {
   const [, setCurrentJobId] = useState<number | null>(null);
   const [jobProgress, setJobProgress] = useState<JobProgress | null>(null);
   const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [latestLogMessage, setLatestLogMessage] = useState<string>('');
+  const [showSuccessPopup, setShowSuccessPopup] = useState<boolean>(false);
+  const [showFailurePopup, setShowFailurePopup] = useState<boolean>(false);
+  const [failureMessage, setFailureMessage] = useState<string>('');
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const failureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+      if (failureTimeoutRef.current) clearTimeout(failureTimeoutRef.current);
+    };
+  }, []);
+
+  const showSuccess = useCallback(() => {
+    playSound('success');
+    setShowSuccessPopup(true);
+    if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+    successTimeoutRef.current = setTimeout(() => setShowSuccessPopup(false), 5000);
+  }, []);
+
+  const showFailure = useCallback((message: string) => {
+    playSound('failure');
+    setFailureMessage(message);
+    setShowFailurePopup(true);
+    if (failureTimeoutRef.current) clearTimeout(failureTimeoutRef.current);
+    failureTimeoutRef.current = setTimeout(() => setShowFailurePopup(false), 5000);
+  }, []);
 
   useEffect(() => {
     checkStatus();
@@ -194,6 +274,7 @@ const AllDebridPanel: React.FC = () => {
     setDetectedCategory(null);
     setJobProgress(null);
     setProgressPercent(0);
+    setLatestLogMessage('Starting download...');
     
     const pollInterval = setInterval(async () => {
       try {
@@ -235,33 +316,52 @@ const AllDebridPanel: React.FC = () => {
           toast.info(`📺 Scanning Plex library: ${progress.plex_library_name}`);
         }
         
-        // Add new logs since last poll
+        // Add new logs since last poll and update latest log message
         if (data.logs && data.logs.length > lastLogCount) {
           const newLogs = data.logs.slice(lastLogCount);
           newLogs.forEach((log: { message: string; level: string }) => {
             window.addLog?.(log.message, log.level);
           });
+          // Update latest log message for progress bar display
+          const lastLog = newLogs[newLogs.length - 1];
+          if (lastLog) {
+            // Clean up the message for display (remove timestamps, keep more content)
+            let cleanMessage = lastLog.message
+              .replace(/^\[[\d:]+\s*[AP]M\]\s*/, '')  // Remove timestamp
+              .replace(/^[📁🎬🔍✅❌⬇️📤🎵📺⚠️🚀✨💾🔄]+\s*/, '');  // Remove leading emojis
+            // Truncate if too long
+            if (cleanMessage.length > 80) {
+              cleanMessage = cleanMessage.substring(0, 77) + '...';
+            }
+            setLatestLogMessage(cleanMessage);
+          }
           lastLogCount = data.logs.length;
         }
         
         if (data.status === 'completed') {
           clearInterval(pollInterval);
+          showSuccess();
           toast.success('Download completed!');
           if (progress.plex_library_name) {
             toast.success(`📺 Plex scan triggered for ${progress.plex_library_name}`);
           }
           setLoading(false);
           setCurrentJobId(null);
+          setLatestLogMessage('🎉 Job completed successfully!');
           // Keep progress visible for a moment
           setTimeout(() => {
             setJobProgress(null);
             setDetectedCategory(null);
+            setLatestLogMessage('');
           }, 15000);
         } else if (data.status === 'failed') {
           clearInterval(pollInterval);
-          toast.error(data.error || 'Download failed');
+          const errorMsg = data.error || 'Download failed';
+          showFailure(errorMsg);
+          toast.error(errorMsg);
           setLoading(false);
           setCurrentJobId(null);
+          setLatestLogMessage('');
           setJobProgress(null);
           setDetectedCategory(null);
         }
@@ -299,8 +399,8 @@ const AllDebridPanel: React.FC = () => {
   }
 
   return (
-    <Card variant="glass">
-      <CardHeader>
+    <>
+    <Card variant="glass">      <CardHeader>
         <CardTitle className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/20">
             <Cloud className="h-5 w-5 text-blue-500" />
@@ -464,19 +564,63 @@ const AllDebridPanel: React.FC = () => {
         {/* Enhanced Progress Display */}
         {loading && jobProgress && (
           <div className="space-y-3 p-4 rounded-xl bg-slate-900/50 border border-slate-700/50">
-            {/* Progress Bar */}
+            {/* Progress Bar with Latest Log */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
                 <span className={PHASE_LABELS[jobProgress.phase]?.color || 'text-gray-400'}>
                   {PHASE_LABELS[jobProgress.phase]?.icon} {PHASE_LABELS[jobProgress.phase]?.label || jobProgress.phase}
                 </span>
-                <span className="text-slate-400">{Math.round(progressPercent)}%</span>
+                <span className="text-emerald-400 font-semibold">{Math.round(progressPercent)}%</span>
               </div>
-              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+              {/* Animated Green Progress Bar */}
+              <div className="h-3 bg-slate-800 rounded-full overflow-hidden relative">
                 <div 
-                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-500"
-                  style={{ width: `${progressPercent}%` }}
+                  className="h-full rounded-full transition-all duration-500 relative overflow-hidden"
+                  style={{ 
+                    width: `${progressPercent}%`,
+                    background: 'linear-gradient(90deg, #10b981, #34d399, #6ee7b3, #34d399, #10b981)',
+                    backgroundSize: '200% 100%',
+                    animation: 'gradient-flow 2s linear infinite'
+                  }}
+                >
+                  {/* Sparkle overlay */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{
+                      background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)',
+                      backgroundSize: '50% 100%',
+                      animation: 'shimmer-fast 1.5s ease-in-out infinite'
+                    }}
+                  />
+                  {/* Moving sparkles */}
+                  <div 
+                    className="absolute inset-0 opacity-60"
+                    style={{
+                      backgroundImage: `
+                        radial-gradient(2px 2px at 10% 50%, rgba(255,255,255,0.9), transparent),
+                        radial-gradient(2px 2px at 30% 30%, rgba(255,255,255,0.8), transparent),
+                        radial-gradient(1px 1px at 50% 70%, rgba(255,255,255,0.9), transparent),
+                        radial-gradient(2px 2px at 70% 40%, rgba(255,255,255,0.7), transparent),
+                        radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.8), transparent)
+                      `,
+                      animation: 'sparkle-move 2s ease-in-out infinite'
+                    }}
+                  />
+                </div>
+                {/* Glow effect */}
+                <div 
+                  className="absolute top-0 left-0 h-full rounded-full pointer-events-none"
+                  style={{ 
+                    width: `${progressPercent}%`,
+                    boxShadow: '0 0 15px rgba(52, 211, 153, 0.6), 0 0 30px rgba(16, 185, 129, 0.4)',
+                    transition: 'width 0.5s ease'
+                  }}
                 />
+              </div>
+              {/* Latest Log Message - Live updates every 2s */}
+              <div className="text-xs text-emerald-300/90 truncate mt-1.5 font-mono bg-slate-800/70 px-3 py-1.5 rounded-lg border border-emerald-500/20 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                <span className="truncate">{latestLogMessage || `${PHASE_LABELS[jobProgress.phase]?.label || jobProgress.phase}...`}</span>
               </div>
             </div>
 
@@ -540,7 +684,45 @@ const AllDebridPanel: React.FC = () => {
           Downloads with aria2c → {language === 'auto' ? 'Auto-detects language' : `Filters ${language} audio`} → Organizes → {destinationType === 'nas' ? 'Pushes to NAS' : 'Saves locally'}
         </p>
       </CardContent>
+
     </Card>
+
+      {/* Success Popup - Using Portal to render outside Card */}
+      {showSuccessPopup && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none">
+          <div className="bg-gradient-to-br from-emerald-500 to-green-600 backdrop-blur-xl p-8 rounded-2xl shadow-2xl border border-emerald-400/50 animate-bounce-in pointer-events-auto transform scale-100">
+            <div className="flex items-center gap-4">
+              <div className="p-4 rounded-full bg-white/20 animate-pulse">
+                <PartyPopper className="h-10 w-10 text-white" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-white">🎉 Success!</h3>
+                <p className="text-emerald-100 text-lg">Download completed successfully</p>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Failure Popup - Using Portal to render outside Card */}
+      {showFailurePopup && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none">
+          <div className="bg-gradient-to-br from-red-500 to-rose-600 backdrop-blur-xl p-8 rounded-2xl shadow-2xl border border-red-400/50 animate-shake pointer-events-auto">
+            <div className="flex items-center gap-4">
+              <div className="p-4 rounded-full bg-white/20">
+                <AlertTriangle className="h-10 w-10 text-white" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-white">❌ Failed</h3>
+                <p className="text-red-100 text-lg max-w-xs">{failureMessage}</p>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 };
 
